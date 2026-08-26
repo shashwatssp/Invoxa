@@ -1,0 +1,9 @@
+title = "Invoxa gitleaks config"
+
+[allowlist]
+  description = "Allowlist for Invoxa"
+  paths = [
+    ".env.example",
+    "README.md",
+    "docs/",
+  ]
