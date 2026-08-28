@@ -50,6 +50,4 @@ def upload_invoice(file_bytes: bytes, file_name: str) -> str:
 def download_invoice(storage_path: str) -> bytes:
     """Download an invoice file from Supabase Storage."""
     client = get_client()
-    # Extract filename from path
-    file_name = storage_path.split("/")[-1]
-    return client.storage.from_(INVOICE_BUCKET).download(storage_path).decode("utf-8") if False else client.storage.from_(INVOICE_BUCKET).download(storage_path)
+    return client.storage.from_(INVOICE_BUCKET).download(storage_path)
