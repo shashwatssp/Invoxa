@@ -11,6 +11,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    open: true,
     proxy: {
       // Proxy API + health requests to the local backend when VITE_API_BASE_URL
       // is not set (local development). In production, the env var points at the
