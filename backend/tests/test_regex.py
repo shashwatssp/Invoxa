@@ -17,7 +17,7 @@ from app.extraction.regex_rules import (
 
 SAMPLE_INVOICE_TEXT = """
 ACME SUPPLIERS LLP
-GSTIN: 27AABCCDDEEFFG
+GSTIN: 27AABCD1234E1Z5
 Invoice Number: INV-2024-001
 Invoice Date: 15/08/2024
 Due Date: 30/08/2024
@@ -83,7 +83,7 @@ class TestVendorName:
 class TestGSTIN:
     def test_extract_gstin_candidates(self):
         candidates = extract_gstin_candidates(SAMPLE_INVOICE_TEXT)
-        assert "27AABCCDDEEFFG" in candidates
+        assert "27AABCD1234E1Z5" in candidates
 
     def test_strips_invalid_gstin(self):
         candidates = extract_gstin_candidates("Some text 12345 not a gstin")

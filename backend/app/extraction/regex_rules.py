@@ -30,13 +30,13 @@ AMOUNT_PATTERN = re.compile(
 
 # Tax amounts: CGST, SGST, IGST, UTGST
 TAX_PATTERN = re.compile(
-    r"\b(CGST|SGST|IGST|UTGST)\b[^\₹\d\n]{0,30}(?:Rs\.?|INR|₹)?\s*([\d,]+\.\d{2})",
+    r"\b(CGST|SGST|IGST|UTGST)\b(?:\s*\d+%?\s*[:.,]?\s*)?[^₹\d\n]{0,10}(?:Rs\.?|INR|₹)?\s*([\d,]+\.?\d{0,2})",
     re.IGNORECASE,
 )
 
 # Vendor names: typically uppercase text before "GSTIN" keyword
 VENDOR_PATTERN = re.compile(
-    r"([A-Z][A-Z\s&,.()]+)\s*(?:GSTIN|GST\s*No\.?|GSTIN\s*No\.?)",
+    r"([A-Z][A-Z &,.()]+)\s*(?:GSTIN|GST\s*No\.?|GSTIN\s*No\.?)",
     re.IGNORECASE,
 )
 
@@ -49,7 +49,7 @@ def _parse_amount(amount_str: str) -> float | None:
     if not amount_str:
         return None
     # Remove currency symbols, commas, spaces
-    cleaned = re.sub(r"[,₹Rs.\s]", "", amount_str.strip())
+    cleaned = re.sub(r"[,\s₹]", "", amount_str.strip())
     try:
         return float(cleaned)
     except ValueError:
@@ -154,7 +154,7 @@ def extract_vendor_name(text: str) -> str | None:
     """Extract vendor/seller name from text."""
     # Look for patterns like "Seller", "Vendor", "Supplier" with name
     for label in ["Seller", "Vendor", "Supplier", "From", "Sold by"]:
-        pattern = rf"{label}[^A-Za-z\n]{{0,20}}([A-Z][A-Za-z\s&,.()]+)"
+        pattern = rf"\b{label}\b[^A-Za-z\n]{{0,20}}([A-Z][A-Za-z &,.()]+)"
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return match.group(1).strip()

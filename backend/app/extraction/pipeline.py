@@ -6,6 +6,8 @@ from app.models.invoice import ExtractionResult
 from app.extraction.ocr import extract_text
 from app.extraction.regex_rules import extract_all_fields
 from app.validation.gstin import validate_gstin
+from app.validation.anomaly import should_flag_for_review, detect_anomalies
+from app.validation.duplicate import is_duplicate
 from app.config import CONFIDENCE_THRESHOLD
 
 
@@ -118,10 +120,11 @@ def extract_from_invoice(file_bytes, invoice_id):
     Steps:
     1) Extract text via PyMuPDF/pdfplumber (OCR fallback for scanned PDFs)
     2) Apply regex rules to extract all fields
-    3) Validate GSTIN using checksum (python-stdnum)
+    3) Validate GSTIN using checksum (python-stdnum + direct mod-36)
     4) Perform arithmetic validation (line items + tax == total)
-    5) Score field-level and overall confidence
-    6) If overall confidence < threshold, fall back to Gemini vision API
+    5) Compute field-level and overall confidence scores
+    6) Check for anomalies and duplicates
+    7) If overall confidence < threshold, fall back to Gemini vision API
 
     Returns ExtractionResult with all fields and confidence scores.
     """
@@ -164,18 +167,8 @@ def extract_from_invoice(file_bytes, invoice_id):
     if not arithmetic_passes:
         overall = min(overall, 0.5)
 
-    # Step 6: Determine if review is needed
-    needs_review = overall < CONFIDENCE_THRESHOLD or not gstin_valid
-
-    # If still very low confidence, try Gemini fallback
-    if needs_review and overall < 0.3 and GEMINI_FALLBACK_AVAILABLE:
-        gemini_result = gemini_fallback(file_bytes, text)
-        if gemini_result:
-            result = gemini_result
-            result.needs_review = result.overall_confidence < CONFIDENCE_THRESHOLD
-            return result
-
-    return ExtractionResult(
+    # Build initial result
+    result = ExtractionResult(
         vendor_name=fields.get("vendor_name"),
         vendor_gstin=fields.get("vendor_gstin"),
         invoice_number=fields.get("invoice_number"),
@@ -187,6 +180,25 @@ def extract_from_invoice(file_bytes, invoice_id):
         line_items=fields.get("line_items"),
         confidence=min(field_confidence.values()) if field_confidence else 0.0,
         overall_confidence=overall,
-        needs_review=needs_review,
+        needs_review=False,
         raw_text=text,
     )
+
+    # Step 6: Check for anomalies and duplicates
+    anomalies = detect_anomalies(result)
+    has_duplicates = is_duplicate(
+        result.vendor_gstin, result.invoice_number, result.amount
+    )
+
+    # Determine if review is needed
+    needs_review = should_flag_for_review(result) or not gstin_valid or has_duplicates
+
+    # If still very low confidence, try Gemini fallback
+    if needs_review and overall < 0.3 and GEMINI_FALLBACK_AVAILABLE:
+        gemini_result = gemini_fallback(file_bytes, text)
+        if gemini_result:
+            gemini_result.needs_review = gemini_result.overall_confidence < CONFIDENCE_THRESHOLD
+            return gemini_result
+
+    result.needs_review = needs_review
+    return result
