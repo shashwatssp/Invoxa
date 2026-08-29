@@ -1,9 +1,10 @@
-from pydantic import BaseModel, Field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
+
+from pydantic import BaseModel
 
 
-class InvoiceStatus(str, Enum):
+class InvoiceStatus(StrEnum):
     PENDING = "pending"
     FLAGGED = "flagged"
     AUTO_APPROVED = "auto_approved"

@@ -6,9 +6,10 @@ Handles:
 - pdfplumber for layout-preserving table extraction
 """
 import io
+
 import fitz  # PyMuPDF
-import pytesseract
 import pdfplumber
+import pytesseract
 from PIL import Image
 
 
@@ -30,10 +31,9 @@ def extract_text_pdfplumber(file_bytes: bytes) -> str:
     Preserves layout better, good for table extraction.
     """
     text = ""
-    with io.BytesIO(file_bytes) as f:
-        with pdfplumber.open(f) as pdf:
-            for page in pdf.pages:
-                text += page.extract_text() or ""
+    with io.BytesIO(file_bytes) as f, pdfplumber.open(f) as pdf:
+        for page in pdf.pages:
+            text += page.extract_text() or ""
     return text
 
 
@@ -43,12 +43,11 @@ def extract_tables_pdfplumber(file_bytes: bytes) -> list[list[list[str]]]:
     Returns list of tables (each table is list of rows, each row is list of cell strings).
     """
     tables = []
-    with io.BytesIO(file_bytes) as f:
-        with pdfplumber.open(f) as pdf:
-            for page in pdf.pages:
-                page_tables = page.extract_tables()
-                if page_tables:
-                    tables.extend(page_tables)
+    with io.BytesIO(file_bytes) as f, pdfplumber.open(f) as pdf:
+        for page in pdf.pages:
+            page_tables = page.extract_tables()
+            if page_tables:
+                tables.extend(page_tables)
     return tables
 
 
@@ -82,7 +81,7 @@ def ocr_pdf(file_bytes: bytes, lang: str = "eng+hin") -> str:
     """
     text = ""
     with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-        for i, page in enumerate(doc):
+        for _i, page in enumerate(doc):
             mat = fitz.Matrix(300 / 72, 300 / 72)
             pix = page.get_pixmap(matrix=mat)
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
@@ -104,7 +103,7 @@ def extract_text(file_bytes: bytes, filename: str = "invoice.pdf") -> tuple[str,
         text = extract_text_pdfplumber(file_bytes)
         if text and len(text.strip()) > 0:
             return text, False
-    except Exception:
+    except Exception:  # intentionally fall through to next strategy
         pass
 
     # Fall back to PyMuPDF
@@ -112,7 +111,7 @@ def extract_text(file_bytes: bytes, filename: str = "invoice.pdf") -> tuple[str,
         text = extract_text_pymupdf(file_bytes)
         if text and len(text.strip()) > 0:
             return text, False
-    except Exception:
+    except Exception:  # intentionally fall through to OCR
         pass
 
     # Fall back to OCR (Tesseract)

@@ -10,8 +10,8 @@ API contract: ``GET /api/digest?days=N`` -> JSON dict (see ``to_dict``).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.database import get_invoices
@@ -22,7 +22,7 @@ class Digest:
     """Plain-English weekly summary."""
     window_days: int = 7
     generated_at: str = field(
-        default_factory=lambda: datetime.utcnow().isoformat(timespec="seconds")
+default_factory=lambda: datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
     )
     invoices_processed: int = 0
     auto_approved: int = 0
@@ -39,7 +39,7 @@ class Digest:
 
 
 def _iso_now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _window_start(window_days: int) -> datetime:

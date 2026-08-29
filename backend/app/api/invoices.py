@@ -1,21 +1,21 @@
 """
 Invoice API endpoints.
 """
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.database import (
-    get_invoices,
-    get_invoice,
-    create_invoice,
-    update_invoice_status,
-    save_extraction_result,
-    save_correction,
-    get_or_create_vendor,
     add_to_review_queue,
+    create_invoice,
+    get_invoice,
+    get_invoices,
+    get_or_create_vendor,
+    save_correction,
+    save_extraction_result,
+    update_invoice_status,
 )
-from app.models.invoice import InvoiceStatus, ExtractionResult, Correction
-from app.supabase import download_invoice, upload_invoice
 from app.extraction.pipeline import extract_from_invoice
+from app.models.invoice import Correction, ExtractionResult, InvoiceStatus
+from app.supabase import download_invoice, upload_invoice
 
 router = APIRouter(prefix="/api")
 
@@ -48,7 +48,7 @@ async def upload_and_register(file: UploadFile = File(...)):
     try:
         storage_path = upload_invoice(file_bytes, file_name)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Storage upload failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Storage upload failed: {e}") from e
 
     # Create invoice record
     invoice_id = create_invoice(storage_path)
@@ -97,7 +97,7 @@ async def run_extraction(invoice_id: str):
     try:
         file_bytes = download_invoice(invoice["storage_path"])
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to download invoice: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to download invoice: {e}") from e
 
     result: ExtractionResult = extract_from_invoice(file_bytes, invoice_id)
 

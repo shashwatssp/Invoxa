@@ -14,7 +14,7 @@ see ``POST /api/review/{review_id}/correct``.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.models.invoice import Correction
@@ -112,7 +112,7 @@ def log_correction(
         new_value=str(new_value).strip(),
         # Provide a fallback timestamp if the DB didn't echo it back so the
         # returned model is always usable by API callers.
-corrected_at=inserted.get("corrected_at") or datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds"),
+corrected_at=inserted.get("corrected_at") or datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds"),
     )
 
 

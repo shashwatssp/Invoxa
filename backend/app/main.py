@@ -1,11 +1,12 @@
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
-from app.supabase import close_client
+from fastapi import FastAPI
+
+from app.api.digest import router as digest_router
+from app.api.export import router as export_router
 from app.api.invoices import router as invoices_router
 from app.api.review import router as review_router
-from app.api.export import router as export_router
-from app.api.digest import router as digest_router
+from app.supabase import close_client
 
 
 @asynccontextmanager

@@ -2,13 +2,13 @@
 OCR-first extraction pipeline.
 Strategy: text-layer extraction (PyMuPDF/pdfplumber) -> regex rules -> confidence scoring -> Gemini fallback.
 """
-from app.models.invoice import ExtractionResult
+from app.config import CONFIDENCE_THRESHOLD
 from app.extraction.ocr import extract_text
 from app.extraction.regex_rules import extract_all_fields
-from app.validation.gstin import validate_gstin
-from app.validation.anomaly import should_flag_for_review, detect_anomalies
+from app.models.invoice import ExtractionResult
+from app.validation.anomaly import detect_anomalies, should_flag_for_review
 from app.validation.duplicate import is_duplicate
-from app.config import CONFIDENCE_THRESHOLD
+from app.validation.gstin import validate_gstin
 
 
 def _score_field(value, has_checksum=False):
@@ -129,7 +129,7 @@ def extract_from_invoice(file_bytes, invoice_id):
     Returns ExtractionResult with all fields and confidence scores.
     """
     # Step 1: Extract text
-    text, used_ocr = extract_text(file_bytes)
+    text, _used_ocr = extract_text(file_bytes)
 
     if not text or not text.strip():
         return ExtractionResult(
@@ -185,7 +185,7 @@ def extract_from_invoice(file_bytes, invoice_id):
     )
 
     # Step 6: Check for anomalies and duplicates
-    anomalies = detect_anomalies(result)
+    detect_anomalies(result)
     has_duplicates = is_duplicate(
         result.vendor_gstin, result.invoice_number, result.amount
     )

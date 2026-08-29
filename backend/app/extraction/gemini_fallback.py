@@ -3,11 +3,11 @@ Gemini vision API fallback for low-confidence extractions.
 Only called when overall confidence drops below 0.3.
 """
 import json
+
 import httpx
 
 from app.config import GEMINI_API_KEY, GEMINI_MODEL
 from app.models.invoice import ExtractionResult
-
 
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
@@ -81,10 +81,8 @@ def gemini_fallback(file_bytes: bytes, text: str) -> ExtractionResult | None:
         content = data["candidates"][0]["content"]["parts"][0]["text"]
         # Extract JSON from response (may be wrapped in markdown)
         json_str = content.strip()
-        if json_str.startswith("```json"):
-            json_str = json_str[7:]
-        if json_str.endswith("```"):
-            json_str = json_str[:-3]
+        json_str = json_str.removeprefix("```json")
+        json_str = json_str.removesuffix("```")
         fields = json.loads(json_str.strip())
     except (KeyError, json.JSONDecodeError, IndexError):
         return None

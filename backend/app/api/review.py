@@ -9,8 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.database import get_review_queue, resolve_review_item
-from app.review.corrections import log_correction, apply_correction_to_invoice
-from app.models.invoice import Correction
+from app.review.corrections import apply_correction_to_invoice, log_correction
 
 router = APIRouter(prefix="/api")
 
@@ -48,8 +47,8 @@ async def correct_and_resolve(review_id: str, payload: ReviewCorrectionRequest):
         apply_correction_to_invoice(correction)
         resolve_review_item(review_id, approved=True)
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"status": "reviewed", "correction": correction.model_dump()}

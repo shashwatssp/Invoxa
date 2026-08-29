@@ -18,6 +18,7 @@ Mod-36 checksum algorithm:
   4. Check digit = (36 - (sum % 36)) % 36
   5. Map back to character: 0-9 -> digit, 10-35 -> A-Z
 """
+import contextlib
 import re
 
 try:
@@ -92,10 +93,8 @@ def validate_gstin(gstin: str) -> bool:
 
     # If direct checksum fails, fall back to python-stdnum cross-check
     if STDNUM_AVAILABLE:
-        try:
+        with contextlib.suppress(Exception):  # library fallback
             return india.gstin.is_valid(gstin)
-        except Exception:
-            pass
 
     return False
 

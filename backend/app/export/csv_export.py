@@ -19,7 +19,6 @@ from typing import Any
 
 from app.database import get_invoices
 
-
 # Tally / Zoho-compatible column order.  Each row is written in this
 # order so downstream accounting software can map fields predictably.
 CSV_HEADERS = [

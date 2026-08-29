@@ -2,10 +2,9 @@
 Database access layer.
 Uses Supabase service key client for all operations.
 """
-from typing import Any
 
+from app.models.invoice import Correction, ExtractionResult, InvoiceStatus
 from app.supabase import get_client
-from app.models.invoice import Invoice, InvoiceStatus, ExtractionResult, Correction
 
 
 def _db():

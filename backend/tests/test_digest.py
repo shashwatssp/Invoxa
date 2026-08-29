@@ -4,7 +4,7 @@ Unit tests for the weekly digest generator.
 Patches ``app.digest.generator.get_invoices`` so the tests don't need a
 live Supabase connection.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -21,8 +21,8 @@ from app.digest.generator import (
 
 @pytest.fixture
 def sample_invoices(monkeypatch):
-    recent = datetime.utcnow() - timedelta(days=2)
-    old = datetime.utcnow() - timedelta(days=30)
+    recent = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=2)
+    old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)
     data = [
         {
             "id": "inv-1",
@@ -38,7 +38,7 @@ def sample_invoices(monkeypatch):
             "vendor_id": "v-acme",
             "invoice_number": "INV-002",
             "amount": "123456.78",
-            "due_date": (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d"),
+        "due_date": (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=2)).strftime("%Y-%m-%d"),
             "created_at": recent.isoformat(),
             "status": "flagged",
         },

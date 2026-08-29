@@ -8,6 +8,7 @@ through dependency injection (e.g. ``app.review.corrections`` tests).
 """
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 
@@ -19,9 +20,10 @@ def _create_supabase_client():
     package to be installed.
     """
     from supabase import create_client as _create_client
+
     from app.config import (
-        SUPABASE_URL,
         SUPABASE_SERVICE_KEY,
+        SUPABASE_URL,
     )
     return _create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
@@ -47,11 +49,8 @@ def close_client() -> None:
     """Clear the singleton client (called on shutdown)."""
     global _supabase_client
     if _supabase_client is not None:
-        try:
+        with contextlib.suppress(Exception):  # swallow shutdown errors
             _supabase_client.auth.sign_out()
-        except Exception:
-            # Swallow shutdown errors so the lifespan teardown never raises.
-            pass
         _supabase_client = None
 
 

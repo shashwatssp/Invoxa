@@ -13,7 +13,7 @@ GSTIN_PATTERN = re.compile(r"\b(\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d])\b")
 
 # Invoice number (after "Invoice No", "Invoice Number", "Inv #" etc.)
 INVOICE_NUMBER_PATTERN = re.compile(
-    r"(?:Invoice\s*(?:No|Number|#)\.?\s*[:−]?\s*)([A-Za-z0-9\/\-]+)",
+r"(?:Invoice\s*(?:No|Number|#)\.?\s*[:-]?\s*)([A-Za-z0-9\/\-]+)",
     re.IGNORECASE,
 )
 
@@ -206,7 +206,7 @@ def extract_all_fields(text: str) -> dict[str, Any]:
     if not invoice_date and extract_dates(text):
         invoice_date = extract_dates(text)[0]
 
-    total, total_raw = extract_total_amount(text)
+    total, _total_raw = extract_total_amount(text)
     taxes = extract_taxes(text)
     tax_total = sum(v for v in taxes.values() if v is not None)
 

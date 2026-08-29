@@ -2,8 +2,7 @@
 Anomaly detection for invoice data.
 Checks for data integrity issues: amount mismatches, missing fields, date anomalies.
 """
-from datetime import datetime
-from typing import Any
+from datetime import UTC, datetime
 
 from app.models.invoice import ExtractionResult
 
@@ -44,7 +43,7 @@ def detect_anomalies(result: ExtractionResult) -> list[str]:
             if inv_date is None:
                 anomalies.append("unparseable_invoice_date")
             else:
-                now = datetime.now()
+                now = datetime.now(UTC).replace(tzinfo=None)
                 if inv_date > now:
                     anomalies.append(f"future_invoice_date: {result.invoice_date}")
         except (ValueError, TypeError):
@@ -92,8 +91,4 @@ def should_flag_for_review(result: ExtractionResult) -> bool:
     if result.overall_confidence is not None and result.overall_confidence < confidence_threshold:
         return True
 
-    anomalies = detect_anomalies(result)
-    if anomalies:
-        return True
-
-    return False
+    return bool(detect_anomalies(result))
