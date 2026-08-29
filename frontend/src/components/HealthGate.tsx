@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { fetchHealth } from '@/lib/api';
+import { apiBaseUrl, fetchHealth } from '@/lib/api';
 
 type HealthState =
   | { phase: 'checking' }
@@ -17,7 +17,15 @@ interface HealthGateProps {
  * (Render free tier: 60-90s), keeping the UI inside a warm-up spinner instead
  * of letting it cascade into error toasts.
  */
-export function HealthGate({ children, timeoutMs = 65_000 }: HealthGateProps) {
+const DEFAULT_TIMEOUT = 65_000;
+const LOCAL_TIMEOUT = 10_000;
+
+export function HealthGate({ children, timeoutMs }: HealthGateProps) {
+  // When running locally (no VITE_API_BASE_URL), the backend is a direct
+  // localhost process — no cold start. Use a shorter timeout and a message
+  // that helps the user diagnose a missing service.
+  const isLocal = !apiBaseUrl;
+  const effectiveTimeout = timeoutMs ?? (isLocal ? LOCAL_TIMEOUT : DEFAULT_TIMEOUT);
   const [state, setState] = useState<HealthState>({ phase: 'checking' });
 
   useEffect(() => {
@@ -36,17 +44,20 @@ export function HealthGate({ children, timeoutMs = 65_000 }: HealthGateProps) {
       } catch (err) {
         if (cancelled) return;
         const elapsed = Date.now() - startedAt;
-        if (elapsed >= timeoutMs) {
+        if (elapsed >= effectiveTimeout) {
           setState({
             phase: 'failed',
-            message:
-              'Backend is taking too long to wake up. Please try again in a minute.',
+            message: isLocal
+              ? 'Backend is not reachable. Start it with: cd backend && uvicorn app.main:app --reload --port 8000'
+              : 'Backend is taking too long to wake up. Please try again in a minute.',
           });
           return;
         }
         setState({
           phase: 'warming',
-          message: 'Warming up backend… this can take up to 90s on the first request.',
+          message: isLocal
+            ? 'Connecting to backend…'
+            : 'Warming up backend… this can take up to 90s on the first request.',
         });
         setTimeout(poll, 2_500);
       }
@@ -56,7 +67,7 @@ export function HealthGate({ children, timeoutMs = 65_000 }: HealthGateProps) {
     return () => {
       cancelled = true;
     };
-  }, [timeoutMs]);
+  }, [effectiveTimeout, isLocal]);
 
   if (state.phase === 'healthy' || state.phase === 'checking') {
     if (state.phase === 'healthy') return <>{children}</>;
