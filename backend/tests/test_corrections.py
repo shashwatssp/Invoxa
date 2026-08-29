@@ -241,3 +241,42 @@ def test_has_pending_review(fake_client):
 
 def test_invoice_level_fields_constant():
     assert corrections.INVOICE_LEVEL_FIELDS == {"invoice_number", "amount", "due_date"}
+
+
+def test_apply_correction_patches_invoice_table(fake_client):
+    # Correcting an invoice-level field should also update the invoices table.
+    fake_client.table("invoices").extend([{
+        "id": "inv-50",
+        "invoice_number": "OLD-001",
+        "amount": 1000.0,
+        "due_date": "2026-01-01",
+        "status": "flagged",
+    }])
+    correction = Correction(
+        invoice_id="inv-50",
+        field_name="invoice_number",
+        old_value="OLD-001",
+        new_value="NEW-999",
+        corrected_at="2026-09-02T00:00:00+00:00",
+    )
+    apply_correction_to_invoice(correction)
+    updated = fake_client.tables["invoices"][0]
+    assert updated["invoice_number"] == "NEW-999"
+
+
+def test_apply_correction_skips_invoice_table_for_non_invoice_field(fake_client):
+    # Non-invoice-level fields should NOT touch the invoices table.
+    fake_client.table("invoices").extend([{
+        "id": "inv-51",
+        "vendor_name": "OldVendor",
+    }])
+    correction = Correction(
+        invoice_id="inv-51",
+        field_name="vendor_gstin",
+        old_value=None,
+        new_value="27AAAAA0000A1ZZ",
+        corrected_at="2026-09-02T00:00:00+00:00",
+    )
+    apply_correction_to_invoice(correction)
+    assert len(fake_client.tables["invoices"]) == 1
+    assert fake_client.tables["invoices"][0]["vendor_name"] == "OldVendor"

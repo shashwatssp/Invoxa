@@ -14,7 +14,7 @@ see ``POST /api/review/{review_id}/correct``.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.models.invoice import Correction
@@ -112,7 +112,7 @@ def log_correction(
         new_value=str(new_value).strip(),
         # Provide a fallback timestamp if the DB didn't echo it back so the
         # returned model is always usable by API callers.
-        corrected_at=inserted.get("corrected_at") or datetime.utcnow().isoformat(timespec="seconds"),
+corrected_at=inserted.get("corrected_at") or datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds"),
     )
 
 
@@ -132,20 +132,24 @@ def apply_correction_to_invoice(correction: Correction) -> dict[str, Any]:
             # Mark human-verified so reviewers can see it at a glance.
             "confidence": 1.0,
         }).eq("id", existing["id"]).execute()
-        return existing
-
-    # Insert a new extraction_fields row carrying the human-verified value.
-    response = (
-        client.table("extraction_fields")
-        .insert({
+    else:
+        client.table("extraction_fields").insert({
             "invoice_id": correction.invoice_id,
             "field_name": correction.field_name,
             "raw_value": correction.new_value,
             "confidence": 1.0,
-        })
-        .execute()
-    )
-    return (getattr(response, "data", None) or [{}])[0]
+        }).execute()
+
+    # 2. If the corrected field lives directly on the invoices table
+    #    (invoice_number, amount, due_date), patch it there too so API
+    #    consumers see the canonical human-verified value.
+    if correction.field_name in INVOICE_LEVEL_FIELDS:
+        client.table("invoices").update({
+            correction.field_name: correction.new_value,
+        }).eq("id", correction.invoice_id).execute()
+
+    # Return the updated extraction_fields row for the caller.
+    return _fetch_existing_field(client, correction.invoice_id, correction.field_name) or {}
 
 
 def has_pending_review(review_id: str) -> bool:
