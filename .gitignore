@@ -20,8 +20,8 @@ develop-eggs/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -57,3 +57,4 @@ Thumbs.db
 
 # Local
 *.log
+development_plan.md
