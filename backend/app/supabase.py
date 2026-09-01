@@ -1,25 +1,41 @@
 """
 Supabase client wrapper.
-Uses SERVICE_KEY for all server-side operations.
+
+Uses SERVICE_KEY for all server-side operations.  Imports the underlying
+``supabase`` package lazily so that test environments without the package
+installed can still exercise modules that only need to talk to the client
+through dependency injection (e.g. ``app.review.corrections`` tests).
 """
-from supabase import create_client, Client
+from __future__ import annotations
 
-from app.config import (
-    SUPABASE_URL,
-    SUPABASE_SERVICE_KEY,
-)
+from typing import Any
 
 
-def get_supabase() -> Client:
+def _create_supabase_client():
+    """Lazy loader for ``supabase.create_client``.
+
+    Imports happen inside the helper so that simply importing this module -
+    or any module that imports it - does not require the ``supabase``
+    package to be installed.
+    """
+    from supabase import create_client as _create_client
+    from app.config import (
+        SUPABASE_URL,
+        SUPABASE_SERVICE_KEY,
+    )
+    return _create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+
+def get_supabase() -> Any:
     """Create and return a Supabase client with service key."""
-    return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    return _create_supabase_client()
 
 
 # Module-level singleton for reuse
-_supabase_client: Client | None = None
+_supabase_client: Any = None
 
 
-def get_client() -> Client:
+def get_client() -> Any:
     """Get or create the singleton Supabase client."""
     global _supabase_client
     if _supabase_client is None:
@@ -31,7 +47,11 @@ def close_client() -> None:
     """Clear the singleton client (called on shutdown)."""
     global _supabase_client
     if _supabase_client is not None:
-        _supabase_client.auth.sign_out()
+        try:
+            _supabase_client.auth.sign_out()
+        except Exception:
+            # Swallow shutdown errors so the lifespan teardown never raises.
+            pass
         _supabase_client = None
 
 
