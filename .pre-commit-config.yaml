@@ -1,0 +1,7 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.1
+    hooks:
+      - id: gitleaks
+        args: ["--config=.gitleaks.toml", "--verbose"]
+        files: ^(backend/|frontend/|docs/|\.|README\.|migrations/|scripts/)(.*)$

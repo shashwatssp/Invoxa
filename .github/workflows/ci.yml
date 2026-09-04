@@ -45,7 +45,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./frontend
-        run: npm ci
+        run: npm install
 
       - name: Type check
         working-directory: ./frontend
@@ -55,7 +55,7 @@ jobs:
         working-directory: ./frontend
         run: npm run build
 
-  secrets:
+  secret-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +63,6 @@ jobs:
       - name: Install gitleaks
         uses: gitleaks/gitleaks-action@v2
         with:
-          config-file: .gitleaks.toml
+          config-path: .gitleaks.toml
           fail: true
           verbose: true
