@@ -20,14 +20,12 @@ from typing import Any
 from app.models.invoice import Correction
 from app.supabase import get_client
 
-
 # Fields that live directly on the invoices table.
 INVOICE_LEVEL_FIELDS = {
     "invoice_number",
     "amount",
     "due_date",
 }
-
 
 def _fetch_review_row(client: Any, review_id: str) -> dict[str, Any]:
     """

@@ -36,8 +36,8 @@ hosting targets.
    audit log guidance.
 
 ## Database - Supabase
-
-1. Apply migrations manually or via the Supabase CLI:
+|
+|4|1. Apply migrations manually or via the Supabase CLI:
    ```bash
    psql "$DATABASE_URL" -f migrations/0001_init.sql
    psql "$DATABASE_URL" -f scripts/seed.sql   # optional sample vendors
@@ -55,3 +55,38 @@ docker-compose up --build
 
 This boots a Postgres 16 container alongside the backend for a no-Supabase
 local loop.
+
+## Pre-commit Hooks
+
+Install the pre-commit framework and hooks:
+```bash
+pip install pre-commit
+pre-commit install
+```
+This installs the gitleaks secret scanner, which runs on every commit and
+in CI via the `secret-scan` job in `.github/workflows/ci.yml`.
+
+## Troubleshooting
+
+### Backend won't start - missing env vars
+- Ensure all `SUPABASE_*` and `GEMINI_API_KEY` variables are set. The service
+  raises `RuntimeError` at import time if `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`,|
+  or `SUPABASE_SERVICE_KEY` are missing.
+
+### Frontend build fails - `npm ci` errors
+- Use `npm install` instead of `npm ci` (no lock file is committed yet).
+
+### Cold starts on Render
+- Free-tier services sleep after 15 minutes of inactivity and take 60-90s to
+  wake. The frontend's `HealthGate` component shows a warm-up spinner during this
+  window. Consider a cron-job.org keep-alive for always-on behaviour.
+
+### Tesseract not found (Docker build)
+- The `backend/Dockerfile` installs `tesseract-ocr` with `eng` and `hin` language
+  packs. If building locally, ensure the apt packages are installed.
+
+### Tests fail locally - missing `supabase` package
+- The `supabase` Python package may not be installed in your local environment.|
+  This is expected for running the test suite only (the code uses lazy imports|
+  so tests pass with placeholder env vars and a faked client).
+  Run `pip install -r backend/requirements-dev.txt` to install all test deps.

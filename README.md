@@ -60,6 +60,14 @@ cd frontend
 npm run dev
 ```
 
+### Pre-commit Hooks
+
+Install the pre-commit framework and hooks (includes gitleaks secret scanning):
+```bash
+pip install pre-commit
+pre-commit install
+```
+
 ### Environment Variables
 
 Copy `.env.example` to `.env` and fill in values:
