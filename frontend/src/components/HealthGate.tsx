@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { apiBaseUrl, fetchHealth } from '@/lib/api';
+import { fetchHealth } from '@/lib/api';
 
 type HealthState =
   | { phase: 'checking' }
@@ -22,9 +22,9 @@ const LOCAL_TIMEOUT = 10_000;
 
 export function HealthGate({ children, timeoutMs }: HealthGateProps) {
   // When running locally (no VITE_API_BASE_URL), the backend is a direct
-  // localhost process — no cold start. Use a shorter timeout and a message
+  // localhost process, so there is no cold start. Use a shorter timeout and a message
   // that helps the user diagnose a missing service.
-  const isLocal = !apiBaseUrl;
+  const isLocal = !import.meta.env.VITE_API_BASE_URL;
   const effectiveTimeout = timeoutMs ?? (isLocal ? LOCAL_TIMEOUT : DEFAULT_TIMEOUT);
   const [state, setState] = useState<HealthState>({ phase: 'checking' });
 

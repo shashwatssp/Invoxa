@@ -16,6 +16,22 @@ export function formatINR(value: number | null | undefined): string {
   }).format(value);
 }
 
+/** Map an invoice status to a badge tone. */
+export function statusTone(status: string): 'high' | 'medium' | 'low' | 'primary' {
+  switch (status) {
+    case 'auto_approved':
+    case 'reviewed':
+      return 'high';
+    case 'flagged':
+    case 'pending':
+      return 'medium';
+    case 'exported':
+      return 'primary';
+    default:
+      return 'low';
+  }
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) return '-';
   const date = new Date(value);
