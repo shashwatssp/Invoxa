@@ -6,11 +6,36 @@ Handles:
 - pdfplumber for layout-preserving table extraction
 """
 import io
+import shutil
 
 import fitz  # PyMuPDF
 import pdfplumber
 import pytesseract
 from PIL import Image
+
+
+def _resolve_tesseract() -> None:
+    """Point pytesseract at the Tesseract binary when it is not on PATH.
+
+    Checks common Windows install locations (winget/UB-Mannheim layout).
+    No-op on systems where ``tesseract`` is already discoverable.
+    """
+    if shutil.which("tesseract"):
+        return
+    import os
+
+    candidates = [
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            return
+
+
+_resolve_tesseract()
 
 
 def extract_text_pymupdf(file_bytes: bytes) -> str:

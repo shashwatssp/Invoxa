@@ -150,6 +150,14 @@ def extract_taxes(text: str) -> dict[str, float | None]:
     return taxes
 
 
+# Common company suffixes used in a header-line vendor heuristic.
+_COMPANY_SUFFIX_RE = re.compile(
+    r"\b(PVT|PRIVATE|LTD|LIMITED|LLP|LLC|INC|CORP|COMPANY|CO|ENTERPRISES|"
+    r"TRADERS|INDUSTRIES|LOGISTICS|SOLUTIONS|SERVICES|AGENCIES)\b\.?",
+    re.IGNORECASE,
+)
+
+
 def extract_vendor_name(text: str) -> str | None:
     """Extract vendor/seller name from text."""
     # Look for patterns like "Seller", "Vendor", "Supplier" with name
@@ -163,6 +171,20 @@ def extract_vendor_name(text: str) -> str | None:
     match = VENDOR_PATTERN.search(text)
     if match:
         return match.group(1).strip()
+
+    # Fallback: the document header, i.e. one of the first few lines that looks
+    # like a company name (contains a corporate suffix). This catches the
+    # common layout where the business name is the first line of the PDF.
+    for line in text.splitlines()[:6]:
+        candidate = line.strip()
+        if len(candidate) < 4 or len(candidate) > 80:
+            continue
+        if not _COMPANY_SUFFIX_RE.search(candidate):
+            continue
+        # Prefer lines that are predominantly uppercase (typical invoice header)
+        letters = [c for c in candidate if c.isalpha()]
+        if letters and sum(c.isupper() for c in letters) / len(letters) > 0.6:
+            return candidate
 
     return None
 

@@ -9,6 +9,7 @@ through dependency injection (e.g. ``app.review.corrections`` tests).
 from __future__ import annotations
 
 import contextlib
+import uuid
 from typing import Any
 
 
@@ -58,11 +59,32 @@ def close_client() -> None:
 INVOICE_BUCKET = "invoices"
 
 
+def _ensure_bucket(client: Any) -> None:
+    """Create the invoice bucket if it does not exist (idempotent)."""
+    try:
+        buckets = client.storage.list_buckets()
+        if not any(b.get("name") == INVOICE_BUCKET for b in (buckets or [])):
+            client.storage.create_bucket(INVOICE_BUCKET)
+    except Exception:
+        # A failure here should not block invoice creation; upload errors
+        # surface with a clear 502 from the API layer.
+        pass
+
+
 def upload_invoice(file_bytes: bytes, file_name: str) -> str:
-    """Upload an invoice file to Supabase Storage. Returns the storage path."""
+    """Upload an invoice file to Supabase Storage. Returns the storage path.
+
+    The object name is prefixed with a UUID so concurrent uploads of the same
+    file name never collide (Storage returns 409 on overwrite attempts).
+    """
     client = get_client()
-    path = f"raw/{file_name}"
-    client.storage.from_(INVOICE_BUCKET).upload(path, file_bytes)
+    path = f"raw/{uuid.uuid4().hex}-{file_name}"
+    try:
+        client.storage.from_(INVOICE_BUCKET).upload(path, file_bytes)
+    except Exception:
+        # Most common cause on a fresh project: the bucket does not exist yet.
+        _ensure_bucket(client)
+        client.storage.from_(INVOICE_BUCKET).upload(path, file_bytes)
     return path
 
 
