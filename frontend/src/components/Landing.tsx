@@ -31,7 +31,7 @@ const FEATURES = [
   },
   {
     title: 'Books-ready exports',
-    body: 'Approved receipts flow into a clean CSV your accountant can import into Tally or Zoho without rework.',
+    body: 'Approved receipts export to CSV, Excel or Tally-ready XML — your accountant imports them without rework.',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="m7 13 3-3 4 4 5-5" />
@@ -50,8 +50,12 @@ export function Landing() {
           <span className="app-nav__brand-mark" aria-hidden>i</span>
           Invoxa
         </span>
-        <nav className="landing__nav-actions">
-          {status === 'authenticated' ? (
+        <nav className="landing__nav-actions" aria-busy={status === 'loading'}>
+          {status === 'loading' ? (
+            // Restoring the session: reserve the nav space instead of flashing
+            // the logged-out links before switching to "Open app".
+            <span className="landing__nav-skeleton skeleton" aria-hidden="true" />
+          ) : status === 'authenticated' ? (
             <Link to="/app" className="button button--secondary">Open app</Link>
           ) : (
             <>
@@ -67,7 +71,7 @@ export function Landing() {
         <h1 className="landing__title">
           Stop typing invoices.
           <br />
-          <span className="landing__title-accent">Start approving them.</span>
+          <span className="landing__title-accent">Start trusting your books.</span>
         </h1>
         <p className="landing__subtitle">
           Upload a receipt, and Invoxa reads the vendor, GSTIN, dates and totals for you.

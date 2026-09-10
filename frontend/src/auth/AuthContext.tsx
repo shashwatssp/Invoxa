@@ -33,7 +33,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const USER_KEY = 'invoxa_user';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<Status>('loading');
+  // Initialize synchronously: visitors without a stored token render the
+  // anonymous UI on the very first paint (no login/signup -> "Open app" flash).
+  const [status, setStatus] = useState<Status>(() => (getToken() ? 'loading' : 'anonymous'));
   const [user, setUser] = useState<AuthUser | null>(null);
 
   const logout = useCallback(() => {

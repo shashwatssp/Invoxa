@@ -778,6 +778,8 @@ select.input {
 }
 
 .landing__nav-login {
+  display: inline-flex;
+  align-items: center;
   color: var(--color-fg);
   text-decoration: none;
   font-weight: 600;
@@ -785,6 +787,14 @@ select.input {
 }
 
 .landing__nav-login:hover { color: var(--color-primary); }
+
+/* Session-restore placeholder in the landing nav: reserves the button's
+   space so nothing flashes or shifts while the token is being verified. */
+.landing__nav-skeleton {
+  width: 7.75rem;
+  height: 2.5rem;
+  border-radius: 999px;
+}
 
 .landing__hero {
   flex: 1;
@@ -832,6 +842,7 @@ select.input {
 
 .landing__cta {
   display: flex;
+  align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
   justify-content: center;
@@ -858,7 +869,9 @@ select.input {
   border-radius: 0.6rem;
   background: var(--color-primary-soft);
   color: var(--color-primary);
-  display: inline-flex;
+  /* Block-level flex (not inline): inline boxes ride the text baseline and
+     float slightly high above the title below them. */
+  display: flex;
   align-items: center;
   justify-content: center;
 }
