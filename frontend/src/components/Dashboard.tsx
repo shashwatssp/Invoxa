@@ -36,7 +36,7 @@ export function Dashboard() {
   const [digest, setDigest] = useState<DigestPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -85,19 +85,19 @@ export function Dashboard() {
               key={key}
               type="button"
               className="button button--secondary"
-              disabled={exporting}
+              disabled={exporting !== null}
               onClick={async () => {
-                setExporting(true);
+                setExporting(key);
                 try {
                   await run('auto_approved');
                 } catch (err) {
                   setError(friendlyError(err, `Could not download the ${label} file.`));
                 } finally {
-                  setExporting(false);
+                  setExporting(null);
                 }
               }}
             >
-              {exporting ? 'Preparing…' : `Export ${label}`}
+              {exporting === key ? 'Preparing…' : `Export ${label}`}
             </button>
           ))}
         </div>
