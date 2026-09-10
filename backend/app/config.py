@@ -3,6 +3,7 @@ Environment configuration loader.
 Never logs secrets. Loads from .env at repo root.
 """
 import os
+import secrets
 from pathlib import Path
 
 # Load .env from repo root (two levels up from this file)
@@ -40,3 +41,30 @@ CONFIDENCE_THRESHOLD = 0.7  # fall back to Gemini below this
 # --- App ---
 APP_NAME = "Invoxa"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+
+
+def _jwt_secret() -> str:
+    """Resolve the JWT signing secret.
+
+    Priority: SECRET_KEY env var > persisted .jwt_secret file (created once
+    on first run so tokens survive restarts) > ephemeral random key.
+    """
+    env_value = os.getenv("SECRET_KEY")
+    if env_value:
+        return env_value
+    key_file = _ENV_PATH.parent / ".jwt_secret"
+    try:
+        if key_file.exists():
+            stored = key_file.read_text().strip()
+            if stored:
+                return stored
+        key = secrets.token_hex(32)
+        key_file.write_text(key)
+        return key
+    except OSError:
+        # Read-only FS etc.: fall back to an ephemeral key.
+        return secrets.token_hex(32)
+
+
+SECRET_KEY = _jwt_secret()
+TOKEN_EXPIRE_HOURS = int(get_optional("TOKEN_EXPIRE_HOURS", "24") or 24)

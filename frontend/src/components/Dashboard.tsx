@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  buildCsvDownloadUrl,
+  downloadCsv,
   fetchDigest,
   fetchInvoices,
+  friendlyError,
   type InvoiceSummary,
 } from '@/lib/api';
-import { formatDate, formatINR } from '@/lib/format';
+import { formatDate, formatINR, statusTone } from '@/lib/format';
 
 interface DigestPayload {
   window_days?: number;
+  generated_at?: string;
   invoices_processed?: number;
   auto_approved?: number;
   flagged_for_review?: number;
@@ -17,11 +20,21 @@ interface DigestPayload {
   [k: string]: unknown;
 }
 
+function Stat({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
+  return (
+    <div className={`stat${tone ? ` stat--${tone}` : ''}`}>
+      <span className="stat__label">{label}</span>
+      <span className="stat__value">{value}</span>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const [invoices, setInvoices] = useState<InvoiceSummary[]>([]);
   const [digest, setDigest] = useState<DigestPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -35,7 +48,7 @@ export function Dashboard() {
         setInvoices(invoiceList);
         setDigest(digestPayload as DigestPayload);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+        setError(friendlyError(err, 'Failed to load the dashboard.'));
       } finally {
         setLoading(false);
       }
@@ -43,101 +56,139 @@ export function Dashboard() {
     void load();
   }, []);
 
-  const totals = useMemo(() => {
+  const stats = useMemo(() => {
     const counts: Record<string, number> = {};
+    let totalAmount = 0;
     invoices.forEach((invoice) => {
       counts[invoice.status] = (counts[invoice.status] ?? 0) + 1;
+      totalAmount += invoice.amount ?? 0;
     });
-    const totalAmount = invoices.reduce((sum, invoice) => sum + (invoice.amount ?? 0), 0);
     return { counts, totalAmount };
   }, [invoices]);
 
   return (
     <div>
-      <section className="card">
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0 }}>Dashboard</h2>
-          <a
-            className="button"
-            href={buildCsvDownloadUrl('auto_approved')}
-            download
-          >
-            Download Tally/Zoho CSV
-          </a>
-        </header>
-        {error && <div className="error-banner" style={{ marginTop: '0.75rem' }}>{error}</div>}
-        {loading ? (
-          <div className="spinner-page"><div className="spinner" /><p>Loading…</p></div>
-        ) : (
-          <div className="field-grid" style={{ marginTop: '0.75rem' }}>
-            {Object.entries(totals.counts).map(([status, count]) => (
-              <div key={status} className="field">
-                <span className="field__label">{status.replace('_', ' ')}</span>
-                <span className="field__value">{count}</span>
-              </div>
-            ))}
-            <div className="field">
-              <span className="field__label">Total amount</span>
-              <span className="field__value">{formatINR(totals.totalAmount)}</span>
-            </div>
-          </div>
-        )}
-      </section>
+      <header className="page-head">
+        <div>
+          <h1>Dashboard</h1>
+          <p className="muted">Your invoices at a glance.</p>
+        </div>
+        <button
+          type="button"
+          className="button"
+          disabled={exporting}
+          onClick={async () => {
+            setExporting(true);
+            try {
+              await downloadCsv('auto_approved');
+            } catch (err) {
+              setError(friendlyError(err, 'Could not download the CSV.'));
+            } finally {
+              setExporting(false);
+            }
+          }}
+        >
+          {exporting ? 'Preparing…' : 'Download CSV'}
+        </button>
+      </header>
 
-      <section className="card">
-        <h2 style={{ marginTop: 0 }}>Weekly digest</h2>
-        {!digest ? (
-          <p className="muted">Loading…</p>
-        ) : (
-          <>
-            <p className="muted" style={{ marginTop: 0 }}>
-              Last {digest.window_days ?? 7} days
-              {' '}({formatDate(digest.generated_at as string)})
-            </p>
-            {Array.isArray(digest.summary_lines) && digest.summary_lines.length > 0 ? (
-              <ul style={{ paddingLeft: '1.2rem' }}>
+      {error && <div className="error-banner">{error}</div>}
+
+      {loading ? (
+        <div className="card">
+          <div className="skeleton skeleton-line skeleton-line--w40" />
+          <div className="skeleton skeleton-line skeleton-line--w60" />
+          <div className="skeleton skeleton-line" />
+        </div>
+      ) : (
+        <>
+          <div className="stat-grid">
+            <Stat label="Total invoices" value={invoices.length} tone="primary" />
+            <Stat label="Auto-approved" value={stats.counts['auto_approved'] ?? 0} tone="success" />
+            <Stat label="Needs review" value={stats.counts['flagged'] ?? 0} tone="warning" />
+            <Stat label="Total value" value={formatINR(stats.totalAmount)} />
+          </div>
+
+          <section className="card" style={{ marginTop: '1rem' }}>
+            <div className="card__header">
+              <h2>Weekly digest</h2>
+              {digest?.generated_at && (
+                <span className="badge badge--primary">Last {digest.window_days ?? 7} days</span>
+              )}
+            </div>
+            {digest && Array.isArray(digest.summary_lines) && digest.summary_lines.length > 0 ? (
+              <ul className="digest-lines">
                 {digest.summary_lines.map((line, index) => (
-                  <li key={index} className="muted">{line}</li>
+                  <li key={index}>{line}</li>
                 ))}
               </ul>
             ) : (
-              <p className="muted">No notable activity yet.</p>
+              <p className="muted" style={{ margin: 0 }}>No notable activity yet.</p>
             )}
-          </>
-        )}
-      </section>
+          </section>
 
-      <section className="card">
-        <h2 style={{ marginTop: 0 }}>Invoices</h2>
-        {invoices.length === 0 ? (
-          <p className="table-empty">No invoices yet. Upload one to get started.</p>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Invoice #</th>
-                <th>Status</th>
-                <th>Amount</th>
-                <th>Due</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.map((invoice) => (
-                <tr key={invoice.id}>
-                  <td>{invoice.invoice_number ?? '-'}</td>
-                  <td>
-                    <span className="badge">{invoice.status}</span>
-                  </td>
-                  <td>{formatINR(invoice.amount)}</td>
-                  <td>{formatDate(invoice.due_date)}</td>
-                  <td>{formatDate(invoice.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+          <section className="card">
+            <div className="card__header">
+              <h2>Invoices</h2>
+              <span className="muted" style={{ fontSize: '0.85rem' }}>{invoices.length} total</span>
+            </div>
+            {invoices.length === 0 ? (
+              <p className="table-empty">No invoices yet. Upload one to get started.</p>
+            ) : (
+              <>
+                {/* Desktop: table */}
+                <div className="table-wrap">
+                  <table className="table table--responsive">
+                    <thead>
+                      <tr>
+                        <th>Invoice #</th>
+                        <th>Status</th>
+                        <th>Amount</th>
+                        <th>Due</th>
+                        <th>Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoices.map((invoice) => (
+                        <tr key={invoice.id}>
+                          <td>
+                            <Link to={`/app/invoices/${invoice.id}`}>{invoice.invoice_number ?? '(no number)'}</Link>
+                          </td>
+                          <td>
+                            <span className={`badge badge--${statusTone(invoice.status)}`}>
+                              {invoice.status.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td>{formatINR(invoice.amount)}</td>
+                          <td>{formatDate(invoice.due_date)}</td>
+                          <td>{formatDate(invoice.created_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Mobile: stacked cards */}
+                <div className="table-rowcard">
+                  {invoices.map((invoice) => (
+                    <Link key={invoice.id} to={`/app/invoices/${invoice.id}`} className="rowcard">
+                      <div className="rowcard__top">
+                        <span className="rowcard__num">{invoice.invoice_number ?? '(no number)'}</span>
+                        <span className={`badge badge--${statusTone(invoice.status)}`}>
+                          {invoice.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                      <div className="rowcard__meta">
+                        <span>{formatINR(invoice.amount)}</span>
+                        <span>Due {formatDate(invoice.due_date)}</span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }

@@ -58,3 +58,23 @@ Thumbs.db
 # Local
 *.log
 development_plan.md
+
+# Secrets (JWT signing key persists locally only)
+.jwt_secret
+
+# Tooling / agent artifacts
+.poolside/
+
+# Local-only operational files (applied manually, not part of the codebase)
+migrations/0002_auth.sql
+scripts/apply_0002.py
+apply_migration.py
+backend/test-assets/
+
+# Test run output
+e2e_output.txt
+e2e_results.json
+full_suite_out.txt
+test_auth_out.txt
+apply_0002_out.txt
+*_out.txt
