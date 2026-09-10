@@ -59,6 +59,13 @@ Thumbs.db
 *.log
 development_plan.md
 
+# Product/roadmap planning documents (local only, NEVER committed)
+docs/plans/
+*.local.md
+
+# Local tooling binaries (e.g. gitleaks.exe downloaded for verification)
+.tools/
+
 # Secrets (JWT signing key persists locally only)
 .jwt_secret
 
