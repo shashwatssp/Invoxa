@@ -1019,6 +1019,174 @@ select.input {
   .viewer-panel { height: 100vh; height: 100dvh; width: 100%; border-radius: 0; border: none; }
 }
 
+/* ---------- Review workspace: two-pane desktop, stacked mobile ---------- */
+
+.linklike {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-primary);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.review-workspace {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.review-item {
+  display: flex;
+  gap: 0.85rem;
+  padding: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.review-item--active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.review-item__thumb {
+  flex: 0 0 auto;
+  width: 4.5rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-card-alt);
+  cursor: zoom-in;
+  overflow: hidden;
+}
+
+.review-item__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.review-item__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.review-item__title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.review-item__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.3rem;
+}
+
+.review-item__amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.review-item__reason {
+  font-size: 0.85rem;
+  margin: 0.4rem 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.review-item__links {
+  display: flex;
+  gap: 0.9rem;
+  margin-top: 0.4rem;
+}
+
+/* Receipt thumbnails (shared with the detail pane) */
+
+.thumb {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  object-position: top;
+  display: block;
+}
+
+.thumb--large {
+  max-height: 60vh;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
+  aspect-ratio: auto;
+  border-radius: 0.5rem;
+}
+
+.thumb--loading,
+.thumb--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.thumb--loading .spinner {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-width: 2px;
+}
+
+/* Detail pane: large preview + actions, sticky on desktop */
+
+.review-detail {
+  position: sticky;
+  top: calc(var(--nav-height) + 1rem);
+}
+
+.review-detail__preview {
+  display: block;
+  width: 100%;
+  padding: 0.75rem;
+  background: var(--color-card-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 0.6rem;
+  cursor: zoom-in;
+}
+
+.review-detail__hint {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+/* Mobile: single column - hide the detail pane, show inline actions */
+@media (max-width: 900px) {
+  .review-workspace { grid-template-columns: 1fr; }
+  .review-detail { display: none; }
+}
+
+/* Desktop: the detail pane owns the actions; hide per-card duplicates */
+@media (min-width: 901px) {
+  .review-item__actions { display: none; }
+  .review-item { cursor: default; }
+}
+
 /* Hide sign-out button text on very small navs */
 @media (max-width: 900px) {
   .app-nav__user-name { display: none; }

@@ -18,8 +18,8 @@ async def export_csv(
     status: str | None = Query(None, description="Filter by invoice status (e.g. auto_approved, reviewed)"),
     user=Depends(get_current_user),
 ):
-    """Generate a CSV download for Tally/Zoho import."""
-    csv_content = build_csv(status_filter=status)
+    """Generate a CSV download for Tally/Zoho import (this account only)."""
+    csv_content = build_csv(status_filter=status, user_id=user["id"])
     filename = f"invoxa_export_{status or 'all'}.csv"
     return StreamingResponse(
         iter([csv_content]),
@@ -31,4 +31,4 @@ async def export_csv(
 @router.get("/export/preview")
 async def export_preview(status: str | None = Query(None), user=Depends(get_current_user)):
     """Return a JSON preview of the rows that CSV export would emit."""
-    return {"rows": preview_csv_rows(status_filter=status)}
+    return {"rows": preview_csv_rows(status_filter=status, user_id=user["id"])}

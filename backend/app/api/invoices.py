@@ -1,6 +1,9 @@
 """
 Invoice API endpoints. All routes require a logged-in user.
+Reads and file access are scoped to the owning account.
 """
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 
 from app.auth.dependencies import get_current_user
@@ -12,6 +15,7 @@ from app.database import (
     get_or_create_vendor,
     save_correction,
     save_extraction_result,
+    update_invoice_fields,
     update_invoice_status,
 )
 from app.extraction.pipeline import extract_from_invoice
@@ -21,18 +25,53 @@ from app.supabase import download_invoice, upload_invoice
 router = APIRouter(prefix="/api")
 
 
+def _load_owned_invoice(invoice_id: str, user: dict) -> dict:
+    """Fetch an invoice and enforce ownership of the receipt file."""
+    invoice = get_invoice(invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if invoice.get("created_by") and invoice["created_by"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Not your invoice")
+    return invoice
+
+
+def _iso_date(value: str | None) -> str | None:
+    """Normalize an extracted DD/MM/YYYY date to ISO for the DB column."""
+    if not value:
+        return None
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value.strip(), fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+
+def _write_back_canonical_fields(invoice_id: str, result: ExtractionResult) -> None:
+    """Persist extracted key fields onto the invoices row so dashboards,
+    digests and exports show real values instead of blanks."""
+    fields: dict = {}
+    if result.invoice_number:
+        fields["invoice_number"] = result.invoice_number
+    canonical_amount = result.total_amount or result.amount
+    if canonical_amount is not None:
+        fields["amount"] = float(canonical_amount)
+    due_date = _iso_date(result.due_date)
+    if due_date:
+        fields["due_date"] = due_date
+    update_invoice_fields(invoice_id, fields)
+
+
 @router.get("/invoices")
 async def list_invoices(user=Depends(get_current_user)):
-    """List all invoices with status."""
-    return get_invoices()
+    """List the account's invoices with status."""
+    return get_invoices(user["id"])
 
 
 @router.get("/invoices/{invoice_id}/file")
 async def invoice_file(invoice_id: str, user=Depends(get_current_user)):
-    """Stream the original receipt PDF for an invoice (requires login)."""
-    invoice = get_invoice(invoice_id)
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    """Stream the original receipt PDF (owner only)."""
+    invoice = _load_owned_invoice(invoice_id, user)
     try:
         file_bytes = download_invoice(invoice["storage_path"])
     except Exception as e:
@@ -43,6 +82,33 @@ async def invoice_file(invoice_id: str, user=Depends(get_current_user)):
         content=file_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="receipt-{invoice_id}.pdf"'},
+    )
+
+
+@router.get("/invoices/{invoice_id}/preview")
+async def invoice_preview(invoice_id: str, user=Depends(get_current_user)):
+    """Render page 1 of the stored receipt PDF as a PNG thumbnail (owner only)."""
+    invoice = _load_owned_invoice(invoice_id, user)
+    try:
+        file_bytes = download_invoice(invoice["storage_path"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Could not load the receipt file.") from e
+    if not file_bytes:
+        raise HTTPException(status_code=404, detail="Receipt file not found")
+    try:
+        import pymupdf
+
+        doc = pymupdf.open(stream=file_bytes, filetype="pdf")
+        page = doc.load_page(0)
+        pix = page.get_pixmap(dpi=72)
+        png_bytes = pix.tobytes("png")
+        doc.close()
+    except Exception as e:
+        raise HTTPException(status_code=422, detail="Could not render a preview.") from e
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=3600"},
     )
 
 
@@ -78,6 +144,10 @@ async def upload_and_register(file: UploadFile = File(...), user=Depends(get_cur
 
     # Save extraction results
     save_extraction_result(invoice_id, result)
+
+    # Write extracted key fields onto the invoice row so the dashboard,
+    # digest and CSV export show real values.
+    _write_back_canonical_fields(invoice_id, result)
 
     # Update invoice vendor if found
     if result.vendor_gstin:

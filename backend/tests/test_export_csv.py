@@ -4,10 +4,8 @@ Unit tests for the CSV export module.
 Patches ``app.export.csv_export.get_invoices`` so the tests exercise the
 row mapping / formatting helpers without a live Supabase connection.
 """
-import textwrap
 
 import pytest
-
 from app.export import csv_export
 from app.export.csv_export import CSV_HEADERS
 
@@ -43,7 +41,7 @@ def sample_invoices(monkeypatch):
             "status": "pending",
         },
     ]
-    monkeypatch.setattr(csv_export, "get_invoices", lambda: data)
+    monkeypatch.setattr(csv_export, "get_invoices", lambda user_id=None: data)
     return data
 
 
@@ -111,7 +109,7 @@ class TestBuildCsv:
         assert "INV-2026-002" in rows[0]
 
     def test_empty_when_no_rows(self, monkeypatch):
-        monkeypatch.setattr(csv_export, "get_invoices", lambda: [])
+        monkeypatch.setattr(csv_export, "get_invoices", lambda user_id=None: [])
         csv_text = csv_export.build_csv()
         # csv.DictWriter uses \r\n by default; compare line-normalized.
         assert csv_text.splitlines() == [",".join(CSV_HEADERS)]

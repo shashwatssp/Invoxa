@@ -83,7 +83,11 @@ def _coerce_amount(value: Any) -> float:
 def _top_vendors(invoices: list[dict[str, Any]], limit: int = 5) -> list[dict[str, Any]]:
     totals: dict[str, float] = {}
     for invoice in invoices:
-        name = invoice.get("vendor_id") or "(unknown)"
+        name = (
+            invoice.get("vendor_name")
+            or invoice.get("vendor_id")
+            or "(unknown)"
+        )
         amount = _coerce_amount(invoice.get("amount"))
         totals[name] = totals.get(name, 0.0) + amount
     ranked = sorted(totals.items(), key=lambda item: item[1], reverse=True)[:limit]
@@ -142,10 +146,10 @@ def _build_summary_lines(digest: Digest) -> list[str]:
     return lines
 
 
-def generate_digest(window_days: int = 7) -> Digest:
-    """Build a digest for the requested rolling window."""
+def generate_digest(window_days: int = 7, user_id: str | None = None) -> Digest:
+    """Build a digest for the requested rolling window, scoped to one account."""
     start = _window_start(window_days)
-    all_invoices = get_invoices()
+    all_invoices = get_invoices(user_id)
     # Filter to invoices created within the window.
     recent: list[dict[str, Any]] = []
     for invoice in all_invoices:

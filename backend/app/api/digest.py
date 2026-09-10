@@ -17,6 +17,6 @@ async def weekly_digest(
     days: int = Query(7, ge=1, le=90, description="Window size in days"),
     user=Depends(get_current_user),
 ):
-    """Generate plain-English weekly summary."""
-    digest = generate_digest(window_days=days)
+    """Generate a plain-English weekly summary for this account."""
+    digest = generate_digest(window_days=days, user_id=user["id"])
     return digest.to_dict()

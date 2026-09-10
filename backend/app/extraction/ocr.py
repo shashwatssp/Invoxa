@@ -139,8 +139,13 @@ def extract_text(file_bytes: bytes, filename: str = "invoice.pdf") -> tuple[str,
     except Exception:  # intentionally fall through to OCR
         pass
 
-    # Fall back to OCR (Tesseract)
-    text = ocr_pdf(file_bytes)
+    # Fall back to OCR (Tesseract). Skipped cleanly when the binary is
+    # unavailable (e.g. serverless deployments) - the caller then flags
+    # the empty extraction for review instead of failing the request.
+    try:
+        text = ocr_pdf(file_bytes)
+    except Exception:  # no Tesseract binary / OCR runtime failure
+        return "", False
     if text and len(text.strip()) > 0:
         return text, True
 

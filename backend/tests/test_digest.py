@@ -4,25 +4,23 @@ Unit tests for the weekly digest generator.
 Patches ``app.digest.generator.get_invoices`` so the tests don't need a
 live Supabase connection.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-
 from app.digest import generator
 from app.digest.generator import (
-    Digest,
     _coerce_amount,
+    _due_soon,
     _parse_date,
     _top_vendors,
-    _due_soon,
     generate_digest,
 )
 
 
 @pytest.fixture
 def sample_invoices(monkeypatch):
-    recent = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=2)
-    old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)
+    recent = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=2)
+    old = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=30)
     data = [
         {
             "id": "inv-1",
@@ -38,7 +36,7 @@ def sample_invoices(monkeypatch):
             "vendor_id": "v-acme",
             "invoice_number": "INV-002",
             "amount": "123456.78",
-        "due_date": (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=2)).strftime("%Y-%m-%d"),
+        "due_date": (datetime.now(UTC).replace(tzinfo=None) + timedelta(days=2)).strftime("%Y-%m-%d"),
             "created_at": recent.isoformat(),
             "status": "flagged",
         },
@@ -52,7 +50,7 @@ def sample_invoices(monkeypatch):
             "status": "pending",
         },
     ]
-    monkeypatch.setattr(generator, "get_invoices", lambda: data)
+    monkeypatch.setattr(generator, "get_invoices", lambda user_id=None: data)
     return data
 
 

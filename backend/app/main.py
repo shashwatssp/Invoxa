@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from postgrest.exceptions import APIError as PostgrestAPIError
+
 from app.api.auth import router as auth_router
 from app.api.digest import router as digest_router
 from app.api.export import router as export_router

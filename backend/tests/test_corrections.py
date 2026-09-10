@@ -7,14 +7,13 @@ supabase-py client: ``table(...).select(...).eq(...).single()/limit(...)``.
 Insertions and updates are recorded on the fake so tests can assert them.
 """
 import pytest
-
+from app.models.invoice import Correction
 from app.review import corrections
 from app.review.corrections import (
     apply_correction_to_invoice,
     has_pending_review,
     log_correction,
 )
-from app.models.invoice import Correction
 
 
 class FakeTable:
@@ -240,7 +239,7 @@ def test_has_pending_review(fake_client):
 
 
 def test_invoice_level_fields_constant():
-    assert corrections.INVOICE_LEVEL_FIELDS == {"invoice_number", "amount", "due_date"}
+    assert {"invoice_number", "amount", "due_date"} == corrections.INVOICE_LEVEL_FIELDS
 
 
 def test_apply_correction_patches_invoice_table(fake_client):

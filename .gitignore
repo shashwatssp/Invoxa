@@ -70,6 +70,8 @@ migrations/0002_auth.sql
 scripts/apply_0002.py
 apply_migration.py
 backend/test-assets/
+scripts/text_dump.txt
+scripts/diag_review.py
 
 # Test run output
 e2e_output.txt

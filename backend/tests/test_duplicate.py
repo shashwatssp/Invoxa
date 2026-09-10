@@ -3,7 +3,7 @@ Unit tests for duplicate invoice detection.
 Tests amount similarity functions without requiring database access.
 """
 import pytest
-from app.validation.duplicate import _amounts_similar, _amount_similarity
+from app.validation.duplicate import _amount_similarity, _amounts_similar
 
 
 class TestAmountsSimilar:

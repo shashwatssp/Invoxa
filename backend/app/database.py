@@ -14,12 +14,31 @@ def _db():
 
 # --- Invoices ---
 
-def get_invoices() -> list[dict]:
-    """List all invoices with status."""
-    result = _db().table("invoices").select(
-        "id, vendor_id, invoice_number, amount, due_date, status, storage_path, created_at"
-    ).order("created_at", desc=True).execute()
-    return result.data or []
+def get_invoices(user_id: str | None = None) -> list[dict]:
+    """List invoices, scoped to the owning account when ``user_id`` is given.
+
+    Each row carries a flattened ``vendor_name`` (from the vendors embed)
+    so dashboards and exports can show a human-readable name.
+    """
+    query = _db().table("invoices").select(
+        "id, vendor_id, invoice_number, amount, due_date, status, storage_path, "
+        "created_at, created_by, vendors(name)"
+    ).order("created_at", desc=True)
+    if user_id:
+        query = query.eq("created_by", user_id)
+    result = query.execute()
+    rows = result.data or []
+    for row in rows:
+        embed = row.pop("vendors") or {}
+        row["vendor_name"] = embed.get("name") if isinstance(embed, dict) else None
+    return rows
+
+
+def update_invoice_fields(invoice_id: str, fields: dict) -> None:
+    """Patch canonical invoice columns (e.g. invoice_number, amount, due_date)."""
+    if not fields:
+        return
+    _db().table("invoices").update(fields).eq("id", invoice_id).execute()
 
 
 def get_invoice(invoice_id: str) -> dict | None:
@@ -29,7 +48,8 @@ def get_invoice(invoice_id: str) -> dict | None:
     (and the API returns a clean 404) instead of a PostgREST APIError.
     """
     inv = _db().table("invoices").select(
-        "id, vendor_id, invoice_number, amount, due_date, status, storage_path, created_at"
+        "id, vendor_id, invoice_number, amount, due_date, status, storage_path, "
+        "created_at, created_by"
     ).eq("id", invoice_id).limit(1).execute()
 
     if not inv.data:
@@ -161,14 +181,33 @@ def add_to_review_queue(invoice_id: str, reason: str) -> None:
     }).execute()
 
 
-def get_review_queue() -> list[dict]:
-    """Get all pending review items with their invoice info (incl. storage_path
-    so the UI can fetch the receipt PDF without extra round-trips)."""
-    result = _db().table("review_queue").select(
+def get_review_queue(user_id: str | None = None) -> list[dict]:
+    """Get pending review items with their invoice info (incl. storage_path
+    so the UI can fetch the receipt PDF without extra round-trips).
+
+    Scoped to the owning account when ``user_id`` is given.
+    """
+    # !inner makes the created_by filter below eliminate parent rows
+    # (PostgREST left-join embeds would otherwise only trim the embed).
+    query = _db().table("review_queue").select(
         "id, invoice_id, reason, status, created_at, "
-        "invoices(status, vendor_id, invoice_number, amount, storage_path)"
-    ).eq("status", "pending").order("created_at", desc=True).execute()
+        "invoices!inner(status, vendor_id, invoice_number, amount, storage_path, created_by)"
+    ).eq("status", "pending")
+    if user_id:
+        query = query.eq("invoices.created_by", user_id)
+    result = query.order("created_at", desc=True).execute()
     return result.data or []
+
+
+def get_review_item_owner(review_id: str) -> str | None:
+    """Return the created_by (owner user id) of a review item's invoice."""
+    result = _db().table("review_queue").select(
+        "invoices(created_by)"
+    ).eq("id", review_id).limit(1).execute()
+    if not result.data:
+        return None
+    embed = (result.data[0].get("invoices") or {})
+    return embed.get("created_by") if isinstance(embed, dict) else None
 
 
 def resolve_review_item(

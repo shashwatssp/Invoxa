@@ -73,7 +73,7 @@ def _row_for(invoice: dict[str, Any]) -> dict[str, Any]:
         "date": _format_date(invoice.get("due_date") or invoice.get("created_at")),
         "voucher_type": "Invoice",
         "voucher_number": invoice.get("invoice_number") or "",
-        "name": invoice.get("vendor_id") or "",
+        "name": invoice.get("vendor_name") or invoice.get("vendor_id") or "",
         "gstin": "",
         "tax_amount": _safe_amount(invoice.get("amount")),
         "amount": _safe_amount(invoice.get("amount")),
@@ -83,16 +83,18 @@ def _row_for(invoice: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def fetch_export_rows(status_filter: str | None = None) -> list[dict[str, Any]]:
-    """Read invoice rows from Supabase, optionally filtered by status."""
-    rows = get_invoices()
+def fetch_export_rows(
+    status_filter: str | None = None, user_id: str | None = None
+) -> list[dict[str, Any]]:
+    """Read invoice rows from Supabase, scoped to one account."""
+    rows = get_invoices(user_id)
     if status_filter:
         rows = [r for r in rows if (r.get("status") or "") == status_filter]
     return [_row_for(r) for r in rows]
 
 
-def build_csv(status_filter: str | None = None) -> str:
-    """Render the full CSV body as a string."""
+def build_csv(status_filter: str | None = None, user_id: str | None = None) -> str:
+    """Render the full CSV body as a string, scoped to one account."""
     output = io.StringIO()
     writer = csv.DictWriter(
         output,
@@ -101,11 +103,13 @@ def build_csv(status_filter: str | None = None) -> str:
         lineterminator="\n",  # consistent across platforms
     )
     writer.writeheader()
-    for row in fetch_export_rows(status_filter=status_filter):
+    for row in fetch_export_rows(status_filter=status_filter, user_id=user_id):
         writer.writerow(row)
     return output.getvalue()
 
 
-def preview_csv_rows(status_filter: str | None = None) -> list[dict[str, Any]]:
+def preview_csv_rows(
+    status_filter: str | None = None, user_id: str | None = None
+) -> list[dict[str, Any]]:
     """Return the rows that ``build_csv`` would emit, as plain dicts."""
-    return fetch_export_rows(status_filter=status_filter)
+    return fetch_export_rows(status_filter=status_filter, user_id=user_id)

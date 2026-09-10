@@ -17,7 +17,8 @@ select = [
 
 [lint.per-file-ignores]
 # Tests use assert and broad exception handling is acceptable here.
-"backend/tests/**" = ["S101", "BLE001", "S110"]
+# Hardcoded passwords in tests are intentional fake values, never secrets.
+"backend/tests/**" = ["S101", "BLE001", "S110", "S106", "S107"]
 # Extraction pipeline intentionally falls through on exceptions
 # when trying multiple text-extraction strategies (pdfplumber → pymupdf → OCR).
 "backend/app/extraction/ocr.py" = ["BLE001", "S110"]
@@ -30,9 +31,11 @@ select = [
 "backend/app/export/csv_export.py" = ["DTZ007"]
 # GSTIN validation falls back to False on library errors.
 "backend/app/validation/gstin.py" = ["BLE001", "S110"]
-# FastAPI dependency injection requires File(...) in signature.
+# FastAPI dependency injection requires File(...) and Depends(...) in
+# argument defaults; that is the framework's canonical pattern.
 # B904: HTTPException raised from catch blocks use 'from' to preserve traceback.
+"backend/app/api/**" = ["B008"]
 "backend/app/api/invoices.py" = ["B008", "B904"]
-"backend/app/api/review.py" = ["B904"]
+"backend/app/api/review.py" = ["B008", "B904"]
 # ExtractionResult model fields intentionally omitted for brevity.
 "backend/app/extraction/gemini_fallback.py" = ["BLE001"]

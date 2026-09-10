@@ -162,6 +162,14 @@ export async function fetchInvoiceFile(invoiceId: string): Promise<Blob> {
   return data;
 }
 
+/** Fetch a PNG thumbnail (page 1) of the stored receipt. */
+export async function fetchInvoicePreview(invoiceId: string): Promise<Blob> {
+  const { data } = await api.get<Blob>(`/api/invoices/${invoiceId}/preview`, {
+    responseType: 'blob',
+  });
+  return data;
+}
+
 /** Download the approved-invoices CSV via authenticated blob (no URL leaks). */
 export async function downloadCsv(status?: string): Promise<void> {
   const { data } = await api.get<Blob>('/api/export/csv', {

@@ -5,10 +5,9 @@ the names each importing module actually uses (they are imported at module
 top level, e.g. ``from app.database import get_user_by_id``).
 """
 import pytest
-from fastapi.testclient import TestClient
-
 from app.auth import security
 from app.main import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -150,7 +149,7 @@ def test_invoices_require_auth(users):
 
 def test_invoices_list_with_token(users, monkeypatch):
     import app.api.invoices as inv_api
-    monkeypatch.setattr(inv_api, "get_invoices", lambda: [])
+    monkeypatch.setattr(inv_api, "get_invoices", lambda user_id=None: [])
     signup = _signup().json()
     res = client.get(
         "/api/invoices", headers={"Authorization": f"Bearer {signup['token']}"}
@@ -175,9 +174,14 @@ def test_upload_stamps_created_by(users, monkeypatch):
         vendor_gstin = None
         needs_review = False
         overall_confidence = 0.9
+        invoice_number = None
+        amount = None
+        total_amount = None
+        due_date = None
 
     monkeypatch.setattr(inv_api, "extract_from_invoice", lambda b, iid: FakeResult())
     monkeypatch.setattr(inv_api, "save_extraction_result", lambda iid, r: None)
+    monkeypatch.setattr(inv_api, "update_invoice_fields", lambda *a, **k: None)
     monkeypatch.setattr(inv_api, "update_invoice_status", lambda *a, **k: None)
 
     signup = _signup().json()
@@ -201,6 +205,8 @@ def _resolve_capture(users, monkeypatch):
         captured["reviewed_by"] = reviewed_by
 
     monkeypatch.setattr(review_api, "resolve_review_item", fake_resolve)
+    # Legacy rows have no owner; ownership is enforced in the endpoint.
+    monkeypatch.setattr(review_api, "get_review_item_owner", lambda rid: None)
     return captured
 
 
@@ -251,6 +257,66 @@ def test_invoice_file_unknown_invoice(users, monkeypatch):
         headers={"Authorization": f"Bearer {signup['token']}"},
     )
     assert res.status_code == 404
+
+
+# ------------------------------------------------- preview endpoint
+
+def test_invoice_preview_returns_png(users, monkeypatch):
+    from pathlib import Path
+
+    import app.api.invoices as inv_api
+
+    real_pdf = (
+        Path(__file__).resolve().parent.parent / "test-assets" / "gst_invoice_a.pdf"
+    ).read_bytes()
+    monkeypatch.setattr(
+        inv_api,
+        "get_invoice",
+        lambda iid: {"id": iid, "storage_path": "raw/x.pdf", "created_by": None},
+    )
+    monkeypatch.setattr(inv_api, "download_invoice", lambda path: real_pdf)
+    signup = _signup().json()
+    res = client.get(
+        "/api/invoices/inv-1/preview",
+        headers={"Authorization": f"Bearer {signup['token']}"},
+    )
+    assert res.status_code == 200, res.text
+    assert res.headers["content-type"] == "image/png"
+    assert res.content.startswith(b"\x89PNG")
+
+
+def test_invoice_file_forbidden_for_other_account(users, monkeypatch):
+    import app.api.invoices as inv_api
+
+    monkeypatch.setattr(
+        inv_api,
+        "get_invoice",
+        lambda iid: {
+            "id": iid,
+            "storage_path": "raw/x.pdf",
+            "created_by": "someone-else",
+        },
+    )
+    signup = _signup().json()
+    res = client.get(
+        "/api/invoices/inv-1/file",
+        headers={"Authorization": f"Bearer {signup['token']}"},
+    )
+    assert res.status_code == 403
+
+
+def test_review_resolve_forbidden_for_other_account(users, monkeypatch):
+    import app.api.review as review_api
+
+    monkeypatch.setattr(
+        review_api, "get_review_item_owner", lambda rid: "someone-else"
+    )
+    member = _signup().json()
+    res = client.post(
+        "/api/review/rq-1/resolve?approved=true",
+        headers={"Authorization": f"Bearer {member['token']}"},
+    )
+    assert res.status_code == 403
 
 
 # ------------------------------------------------------- security helpers

@@ -2,18 +2,16 @@
 Unit tests for regex-based invoice field extraction.
 Tests against synthetic Indian invoice text samples.
 """
-import pytest
 from app.extraction.regex_rules import (
-    extract_invoice_number,
-    extract_invoice_date,
-    extract_due_date,
-    extract_total_amount,
-    extract_taxes,
-    extract_vendor_name,
-    extract_gstin_candidates,
     extract_all_fields,
+    extract_due_date,
+    extract_gstin_candidates,
+    extract_invoice_date,
+    extract_invoice_number,
+    extract_taxes,
+    extract_total_amount,
+    extract_vendor_name,
 )
-
 
 SAMPLE_INVOICE_TEXT = """
 ACME SUPPLIERS LLP
@@ -56,14 +54,59 @@ class TestDates:
 
 class TestAmount:
     def test_extract_total_amount(self):
-        amount, raw = extract_total_amount(SAMPLE_INVOICE_TEXT)
+        amount, raw, anchor = extract_total_amount(SAMPLE_INVOICE_TEXT)
         assert amount == 7670.00
         assert raw == "7,670.00"
+        assert anchor == "grand"
 
     def test_extract_total_amount_lakh_grouping(self):
         text = "Grand Total: Rs. 1,23,456.78\n"
-        amount, raw = extract_total_amount(text)
+        amount, _raw, anchor = extract_total_amount(text)
         assert amount == 123456.78
+        assert anchor == "grand"
+
+    def test_us_date_fallback(self):
+        # 15/11 is impossible as DD/MM month 11? No - it is valid. Use an
+        # impossible day-first date: 11/15/2019 must read as Nov 15 2019.
+        result = extract_invoice_date("INVOICE DATE: 11/15/2019")
+        assert result == "15/11/2019"
+
+    def test_generic_sales_tax(self):
+        taxes = extract_taxes("Subtotal $100.00\nSALES TAX $10.00\nTOTAL $110.00\n")
+        assert taxes["other"] == 10.00
+
+    def test_generic_vat_with_percentage(self):
+        taxes = extract_taxes("VAT 8.1% 420.02\nTOTAL DUE CHF 6,025.50\n")
+        assert taxes["other"] == 420.02
+
+    def test_vat_registration_number_not_tax(self):
+        taxes = extract_taxes("VAT CHE-114.778.901 · IBAN CH93 0076 2011 6238 5295 7\n")
+        assert taxes["other"] is None
+
+
+class TestLineItems:
+    def test_summary_lines_excluded(self):
+        from app.extraction.regex_rules import extract_line_items
+
+        text = "\n".join(
+            [
+                "LED TV 43 inch 2 18,500.00 37,000.00",
+                "Subtotal: 39,450.00",
+                "CGST 9%: 3,550.50",
+                "Grand Total: 46,551.00",
+            ]
+        )
+        items = extract_line_items(text)
+        assert len(items) == 1
+        assert items[0]["amount"] == 37000.00
+
+    def test_section_subtotal_caption_on_next_line(self):
+        from app.extraction.regex_rules import extract_line_items
+
+        text = "Hardware 2,988.00\nsubtotal\nWidget 10.00 120.00\n"
+        items = extract_line_items(text)
+        assert len(items) == 1
+        assert items[0]["amount"] == 120.00
 
 
 class TestTaxes:

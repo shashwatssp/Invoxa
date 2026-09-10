@@ -9,11 +9,12 @@ uvicorn[standard]>=0.30.0
 supabase>=2.10.0
 
 # OCR and PDF processing
+# (pytesseract needs the Tesseract binary, which exists only on machines
+# where OCR is actually possible; text-layer PDFs never require it)
 pytesseract>=0.3.13
 pdfplumber>=0.11.0
 PyMuPDF>=1.25.0
 pillow>=10.4.0
-opencv-python-headless>=4.10.0.84
 pypdf>=5.0.0
 
 # Regex-based validation

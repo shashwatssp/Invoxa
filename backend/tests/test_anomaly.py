@@ -2,7 +2,6 @@
 Unit tests for anomaly detection.
 Tests detect_anomalies and should_flag_for_review without database access.
 """
-import pytest
 from app.models.invoice import ExtractionResult
 from app.validation.anomaly import detect_anomalies, should_flag_for_review
 
@@ -40,9 +39,12 @@ class TestMissingFields:
         assert "missing_total_amount" in anomalies
 
     def test_missing_gstin(self):
+        # A missing GSTIN is only an anomaly on Indian GST documents.
         result = make_result(vendor_gstin=None)
-        anomalies = detect_anomalies(result)
-        assert "missing_vendor_gstin" in anomalies
+        assert "missing_vendor_gstin" not in detect_anomalies(result)
+        assert "missing_vendor_gstin" in detect_anomalies(
+            result, gstin_applicable=True
+        )
 
     def test_all_fields_present_no_anomalies(self):
         result = make_result()
@@ -57,9 +59,21 @@ class TestAmountMismatch:
         anomalies = detect_anomalies(result)
         assert not any("amount_mismatch" in a for a in anomalies)
 
-    def test_amount_mismatch_detected(self):
-        # Total is 5000 but line items say 1000, tax 180 -> expected 1180
+    def test_line_items_matching_subtotal_not_flagged(self):
+        # Per-line amounts may be tax-inclusive: reconciling with the
+        # subtotal (instead of total + tax) is legitimate.
         result = make_result(total_amount=5000.00, amount=1000.00, tax_amount=180.00)
+        anomalies = detect_anomalies(result)
+        assert not any("amount_mismatch" in a for a in anomalies)
+
+    def test_amount_mismatch_detected(self):
+        # Line items reconcile with NEITHER total+tax NOR subtotal.
+        result = make_result(
+            total_amount=5000.00,
+            amount=1000.00,
+            tax_amount=180.00,
+            line_items=[{"description": "Widgets", "amount": 3000.00}],
+        )
         anomalies = detect_anomalies(result)
         assert any("amount_mismatch" in a for a in anomalies)
 
@@ -124,5 +138,9 @@ class TestShouldFlagForReview:
         assert should_flag_for_review(result) is True
 
     def test_anomalies_flagged(self):
-        result = make_result(total_amount=9999.00, overall_confidence=0.9)
+        result = make_result(
+            total_amount=9999.00,
+            overall_confidence=0.9,
+            line_items=[{"description": "Widgets", "amount": 3000.00}],
+        )
         assert should_flag_for_review(result) is True

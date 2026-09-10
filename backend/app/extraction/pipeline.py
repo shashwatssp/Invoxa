@@ -6,100 +6,109 @@ from app.config import CONFIDENCE_THRESHOLD
 from app.extraction.ocr import extract_text
 from app.extraction.regex_rules import extract_all_fields
 from app.models.invoice import ExtractionResult
-from app.validation.anomaly import detect_anomalies, should_flag_for_review
+from app.validation.anomaly import should_flag_for_review
 from app.validation.duplicate import is_duplicate
 from app.validation.gstin import validate_gstin
 
-
-def _score_field(value, has_checksum=False):
-    """
-    Assign confidence score to a field.
-    - 0.0 if missing
-    - 0.7 if present with structural match (regex)
-    - 0.9 if present with checksum/structural validation passed
-    """
-    if value is None:
-        return 0.0
-    if isinstance(value, (int, float)) and value > 0:
-        return 0.7
-    if isinstance(value, str) and len(value) > 0:
-        if has_checksum:
-            return 0.9
-        return 0.7
-    return 0.0
+# Relative importance of each field when scoring overall confidence.
+# The overall score is the weighted mean over APPLICABLE fields only:
+# a missing field is excluded from the denominator rather than scored 0,
+# so a clean international invoice (no GSTIN) is not unfairly punished.
+FIELD_WEIGHTS = {
+    "total_amount": 0.35,
+    "vendor_gstin": 0.20,
+    "invoice_number": 0.20,
+    "amount": 0.10,
+    "tax_amount": 0.05,
+    "invoice_date": 0.05,
+    "due_date": 0.03,
+    "vendor_name": 0.02,
+}
 
 
-def compute_overall_confidence(fields):
-    """
-    Compute overall confidence from extracted fields.
-    Weighted average: GSTIN (0.2), total amount (0.3), invoice number (0.2),
-    vendor name (0.15), dates (0.1), taxes (0.05).
-    """
-    scores = []
+def _parseable_date(value) -> bool:
+    """True when the value parses as a sane DD/MM/YYYY-ish date."""
+    if not value or not isinstance(value, str):
+        return False
+    from app.validation.anomaly import _parse_indian_date
 
-    # GSTIN (weight 0.2)
+    return _parse_indian_date(value) is not None
+
+
+def compute_field_confidences(fields: dict, gstin_valid: bool, arithmetic_passes: bool) -> dict:
+    """Evidence-weighted per-field confidence.
+
+    Scores reflect HOW the value was found, not just presence:
+    checksum-validated GSTIN > labeled amounts > plain regex hits.
+    Missing fields are simply absent from the dict (not scored 0).
+    """
+    conf: dict[str, float] = {}
+
     if fields.get("vendor_gstin"):
-        scores.append(("gstin", 0.9, 0.2))
-    else:
-        scores.append(("gstin", 0.0, 0.2))
+        conf["vendor_gstin"] = 0.95 if gstin_valid else 0.4
 
-    # Total amount (weight 0.3)
-    if fields.get("total_amount"):
-        scores.append(("amount", 0.7, 0.3))
-    else:
-        scores.append(("amount", 0.0, 0.3))
-
-    # Invoice number (weight 0.2)
     if fields.get("invoice_number"):
-        scores.append(("invoice_number", 0.7, 0.2))
-    else:
-        scores.append(("invoice_number", 0.0, 0.2))
+        conf["invoice_number"] = 0.9
 
-    # Vendor name (weight 0.15)
+    for key in ("invoice_date", "due_date"):
+        if _parseable_date(fields.get(key)):
+            conf[key] = 0.9
+
+    if fields.get("total_amount"):
+        anchor = fields.get("total_anchor")
+        score = 0.92 if anchor == "grand" else 0.85
+        if not arithmetic_passes:
+            score = min(score, 0.5)
+        conf["total_amount"] = score
+
+    if fields.get("amount") is not None:
+        conf["amount"] = 0.85
+
+    if fields.get("tax_amount"):
+        conf["tax_amount"] = 0.9
+
     if fields.get("vendor_name"):
-        scores.append(("vendor_name", 0.7, 0.15))
-    else:
-        scores.append(("vendor_name", 0.0, 0.15))
+        conf["vendor_name"] = 0.75
 
-    # Due date (weight 0.1)
-    if fields.get("due_date"):
-        scores.append(("due_date", 0.7, 0.1))
-    else:
-        scores.append(("due_date", 0.0, 0.1))
+    return conf
 
-    # Taxes (weight 0.05)
-    tax_found = any(v is not None for v in (fields.get("taxes") or {}).values())
-    if tax_found:
-        scores.append(("taxes", 0.7, 0.05))
-    else:
-        scores.append(("taxes", 0.0, 0.05))
 
-    total_weight = sum(w for _, _, w in scores)
-    weighted_score = sum(score * weight for _, score, weight in scores)
-
+def compute_overall_confidence(field_confidences: dict) -> float:
+    """Weighted mean over the fields that were actually extracted."""
+    if not field_confidences:
+        return 0.0
+    total_weight = sum(
+        w for name, w in FIELD_WEIGHTS.items() if name in field_confidences
+    )
     if total_weight == 0:
         return 0.0
-
-    return round(weighted_score / total_weight, 2)
+    weighted = sum(
+        field_confidences[name] * w
+        for name, w in FIELD_WEIGHTS.items()
+        if name in field_confidences
+    )
+    return round(weighted / total_weight, 2)
 
 
 def _arithmetic_validation(fields):
     """
-    Validate that line items + tax amount equals total amount.
-    Returns True if validation passes or cannot be performed.
+    Validate that subtotal + tax equals grand total.
+
+    Tolerates either Rs 1 or 0.5% rounding drift, whichever is larger.
+    Returns True if validation passes or cannot be performed (either
+    operand missing).
     """
     total = fields.get("total_amount")
-    amount = fields.get("amount")
+    subtotal = fields.get("amount")
     taxes = fields.get("taxes") or {}
 
-    if total is None or amount is None:
+    if total is None or subtotal is None:
         return True
 
     tax_total = sum(v for v in taxes.values() if v is not None)
     if tax_total > 0:
-        expected_total = amount + tax_total
-        difference = abs(expected_total - (total or 0))
-        if difference > 1.0:
+        tolerance = max(1.0, 0.005 * float(total))
+        if abs(subtotal + tax_total - float(total)) > tolerance:
             return False
 
     return True
@@ -142,30 +151,21 @@ def extract_from_invoice(file_bytes, invoice_id):
     # Step 2: Extract fields via regex
     fields = extract_all_fields(text)
 
-    # Step 3: Validate GSTIN via checksum
+    # Step 3: Validate GSTIN via checksum. A GSTIN is only *expected* on
+    # Indian GST documents; international invoices without one are fine.
     gstin_valid = False
     if fields.get("vendor_gstin"):
         gstin_valid = validate_gstin(fields["vendor_gstin"])
+    gst_applicable = bool(fields.get("gstin_candidates")) or bool(
+        fields.get("has_gst_keywords")
+    )
 
-    # Step 4: Arithmetic validation
+    # Step 4: Arithmetic validation (subtotal + tax == grand total)
     arithmetic_passes = _arithmetic_validation(fields)
 
-    # Step 5: Compute confidence
-    field_confidence = {
-        "vendor_name": _score_field(fields.get("vendor_name")),
-        "vendor_gstin": _score_field(fields.get("vendor_gstin"), has_checksum=gstin_valid),
-        "invoice_number": _score_field(fields.get("invoice_number")),
-        "invoice_date": _score_field(fields.get("invoice_date")),
-        "due_date": _score_field(fields.get("due_date")),
-        "amount": _score_field(fields.get("total_amount")),
-        "tax_amount": _score_field(fields.get("tax_amount")),
-    }
-
-    overall = compute_overall_confidence(fields)
-
-    # If arithmetic validation fails, lower the confidence
-    if not arithmetic_passes:
-        overall = min(overall, 0.5)
+    # Step 5: Evidence-weighted confidence
+    field_confidence = compute_field_confidences(fields, gstin_valid, arithmetic_passes)
+    overall = compute_overall_confidence(field_confidence)
 
     # Build initial result
     result = ExtractionResult(
@@ -184,14 +184,19 @@ def extract_from_invoice(file_bytes, invoice_id):
         raw_text=text,
     )
 
-    # Step 6: Check for anomalies and duplicates
-    detect_anomalies(result)
+    # Step 6: Duplicate check (anomalies are evaluated inside
+    # should_flag_for_review).
     has_duplicates = is_duplicate(
-        result.vendor_gstin, result.invoice_number, result.amount
+        result.vendor_gstin, result.invoice_number, result.total_amount
     )
 
-    # Determine if review is needed
-    needs_review = should_flag_for_review(result) or not gstin_valid or has_duplicates
+    # Determine if review is needed: low overall confidence, real anomalies,
+    # duplicates, or an Indian GST document without a valid GSTIN.
+    needs_review = (
+        should_flag_for_review(result, gstin_applicable=gst_applicable)
+        or (gst_applicable and not gstin_valid)
+        or has_duplicates
+    )
 
     # If still very low confidence, try Gemini fallback
     if needs_review and overall < 0.3 and GEMINI_FALLBACK_AVAILABLE:
