@@ -24,6 +24,8 @@ interface ReceiptViewerProps {
   title?: string;
   onClose: () => void;
   onOpened?: () => void; // fired once the PDF has rendered successfully
+  /** Sticky bottom action (e.g. Approve) shown while the receipt is open. */
+  footerAction?: { label: string; onClick: () => void; disabled?: boolean };
 }
 
 const MAX_PAGES = 10;
@@ -34,7 +36,7 @@ const MAX_PAGES = 10;
  * Canvas rendering works on every browser, including mobile ones
  * where inline PDF iframes are not supported.
  */
-export function ReceiptViewer({ invoiceId, title, onClose, onOpened }: ReceiptViewerProps) {
+export function ReceiptViewer({ invoiceId, title, onClose, onOpened, footerAction }: ReceiptViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -132,6 +134,18 @@ export function ReceiptViewer({ invoiceId, title, onClose, onOpened }: ReceiptVi
               <p className="muted">Loading receipt…</p>
             </div>
           </div>
+        )}
+        {footerAction && (
+          <footer className="viewer-footer">
+            <button
+              type="button"
+              className="button"
+              onClick={footerAction.onClick}
+              disabled={footerAction.disabled}
+            >
+              {footerAction.label}
+            </button>
+          </footer>
         )}
       </div>
     </div>

@@ -169,14 +169,17 @@ button, input, select, textarea {
 }
 
 @media (max-width: 640px) {
+  /* The height must live on a shared scope: .app-main reads it for its
+     bottom padding, so content is never hidden behind the fixed bar. */
+  :root { --tabbar-height: 3.75rem; }
+
   .app-nav { display: none; }
 
   .app-main {
-    padding: 1.25rem 1.25rem calc(var(--tabbar-height) + 1.5rem + env(safe-area-inset-bottom));
+    padding: 1.5rem 1.25rem calc(var(--tabbar-height) + 2rem + env(safe-area-inset-bottom));
   }
 
   .app-tabbar {
-    --tabbar-height: 3.75rem;
     position: fixed;
     bottom: 0;
     left: 0;
@@ -1001,6 +1004,8 @@ select.input {
 .viewer-pages {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1008,6 +1013,17 @@ select.input {
   padding: 1rem;
   background: var(--color-card-alt);
 }
+
+.viewer-footer {
+  border-top: 1px solid var(--color-border);
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--color-card);
+}
+
+.viewer-footer .button { flex: 1 1 auto; max-width: 320px; }
 
 .viewer-page {
   width: 100%;
@@ -1201,9 +1217,11 @@ select.input {
   .review-detail { display: none; }
 }
 
-/* Desktop: the detail pane owns the actions; hide per-card duplicates */
+/* Desktop: the detail pane owns the reason + actions; hide per-card
+   duplicates so the queue list stays scannable. */
 @media (min-width: 901px) {
-  .review-item__actions { display: none; }
+  .review-item__actions,
+  .review-item .review-item__reason { display: none; }
   .review-item { cursor: default; }
 }
 

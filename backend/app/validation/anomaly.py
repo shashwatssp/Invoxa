@@ -22,10 +22,12 @@ def detect_anomalies(
     """
     anomalies = []
 
-    # 1. Missing critical fields
+    # 1. Missing critical fields. A missing SUBTOTAL is acceptable when the
+    # line items reconcile with the grand total - the document is internally
+    # consistent and the amount is trustworthy.
     if result.invoice_number is None:
         anomalies.append("missing_invoice_number")
-    if result.amount is None:
+    if result.amount is None and not _line_items_reconcile(result):
         anomalies.append("missing_total_amount")
     if result.vendor_gstin is None and gstin_applicable:
         anomalies.append("missing_vendor_gstin")
@@ -114,14 +116,30 @@ def _parse_indian_date(date_str: str) -> datetime | None:
     return None
 
 
+def _line_items_reconcile(result: ExtractionResult) -> bool:
+    """True when extracted line items sum to the grand total (with or
+    without tax), within tolerance."""
+    if not result.line_items or result.total_amount is None:
+        return False
+    line_total = sum(
+        item.get("amount", 0) for item in result.line_items
+        if isinstance(item.get("amount"), (int, float))
+    )
+    total = float(result.total_amount)
+    tolerance = max(1.0, 0.005 * total)
+    with_tax = abs(line_total + (result.tax_amount or 0) - total) <= tolerance
+    without_tax = abs(line_total - total) <= tolerance
+    return with_tax or without_tax
+
+
 def should_flag_for_review(
     result: ExtractionResult, gstin_applicable: bool = False
 ) -> bool:
     """
     Determine if an invoice should be flagged for manual review.
-    Flags if low confidence or any anomalies detected.
+    Flags if confidence below 0.8 or any anomalies detected.
     """
-    confidence_threshold = 0.7
+    confidence_threshold = 0.8
     if result.overall_confidence is not None and result.overall_confidence < confidence_threshold:
         return True
 

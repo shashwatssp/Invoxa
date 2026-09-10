@@ -135,17 +135,17 @@ export function ReviewQueue() {
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
 
   // The correction + approval form. Rendered in the detail pane on desktop
-  // and inline under each card on mobile.
-  const actionsForm = (item: ReviewQueueItem) => {
+  // and inline under each card on mobile (CSS picks the visible one).
+  const actionsForm = (item: ReviewQueueItem, idPrefix: string) => {
     const submittingItem = Boolean(submitting[item.id]);
     const hasViewed = Boolean(viewed[item.invoice_id]);
     const selectedField = draft[item.id]?.field_name ?? EDITABLE_FIELDS[0];
     return (
       <form onSubmit={(event) => handleSubmitCorrection(event, item.id)} style={{ marginTop: '0.75rem' }}>
-        <label className="field__label" htmlFor={`field-${item.id}`}>Correct a field</label>
+        <label className="field__label" htmlFor={`field-${idPrefix}-${item.id}`}>Correct a field</label>
         <div className="row-actions" style={{ marginTop: '0.35rem', alignItems: 'center' }}>
           <select
-            id={`field-${item.id}`}
+            id={`field-${idPrefix}-${item.id}`}
             className="input"
             style={{ flex: '0 1 auto', width: 'auto' }}
             value={selectedField}
@@ -196,7 +196,7 @@ export function ReviewQueue() {
     setViewerInvoiceId(item.invoice_id);
   };
 
-  const queueCard = (item: ReviewQueueItem, compact = false) => {
+  const queueCard = (item: ReviewQueueItem) => {
     const invoiceNumber = item.invoices?.invoice_number ?? '(no number)';
     const amount = item.invoices?.amount ?? null;
     const hasViewed = Boolean(viewed[item.invoice_id]);
@@ -233,9 +233,7 @@ export function ReviewQueue() {
             {confidenceBadge(confidence)}
             {hasViewed && <span className="badge badge--high">viewed ✓</span>}
           </div>
-          {!compact && (
-            <p className="muted review-item__reason">{item.reason}</p>
-          )}
+          <p className="muted review-item__reason">{item.reason}</p>
           <div className="review-item__links muted" style={{ fontSize: '0.8rem' }}>
             <button
               type="button"
@@ -251,7 +249,7 @@ export function ReviewQueue() {
               Full detail
             </Link>
           </div>
-          {!compact && <div className="review-item__actions">{actionsForm(item)}</div>}
+          <div className="review-item__actions">{actionsForm(item, 'card')}</div>
         </div>
       </article>
     );
@@ -273,7 +271,7 @@ export function ReviewQueue() {
       {items.length > 0 && (
         <div className="review-workspace">
           <div className="review-list">
-            {items.map((item) => queueCard(item, true))}
+            {items.map((item) => queueCard(item))}
           </div>
 
           <aside className="review-detail card">
@@ -297,7 +295,7 @@ export function ReviewQueue() {
                   <ReceiptThumb invoiceId={selectedItem.invoice_id} large />
                   <span className="review-detail__hint">Open full PDF</span>
                 </button>
-                {actionsForm(selectedItem)}
+                {actionsForm(selectedItem, 'pane')}
               </>
             ) : (
               <p className="muted">Select an invoice from the queue.</p>
@@ -306,14 +304,29 @@ export function ReviewQueue() {
         </div>
       )}
 
-      {viewerInvoiceId && (
-        <ReceiptViewer
-          invoiceId={viewerInvoiceId}
-          title="Receipt under review"
-          onClose={() => setViewerInvoiceId(null)}
-          onOpened={() => markViewed(viewerInvoiceId)}
-        />
-      )}
+      {viewerInvoiceId && (() => {
+        const reviewItem = items.find((item) => item.invoice_id === viewerInvoiceId);
+        return (
+          <ReceiptViewer
+            invoiceId={viewerInvoiceId}
+            title="Receipt under review"
+            onClose={() => setViewerInvoiceId(null)}
+            onOpened={() => markViewed(viewerInvoiceId)}
+            footerAction={
+              reviewItem
+                ? {
+                    label: submitting[reviewItem.id] ? 'Approving…' : 'Approve as-is',
+                    disabled: !viewed[viewerInvoiceId] || Boolean(submitting[reviewItem.id]),
+                    onClick: () => {
+                      void handleApprove(reviewItem.id);
+                      setViewerInvoiceId(null);
+                    },
+                  }
+                : undefined
+            }
+          />
+        );
+      })()}
     </section>
   );
 }
