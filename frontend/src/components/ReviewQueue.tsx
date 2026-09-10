@@ -168,7 +168,7 @@ export function ReviewQueue() {
           <button
             type="submit"
             className="button"
-            disabled={submittingItem || !hasViewed || !(draft[item.id]?.new_value ?? '').trim()}
+            disabled={submittingItem || !(draft[item.id]?.new_value ?? '').trim()}
           >
             {submittingItem ? 'Saving…' : 'Save correction'}
           </button>
@@ -176,16 +176,14 @@ export function ReviewQueue() {
             type="button"
             className="button"
             onClick={() => handleApprove(item.id)}
-            disabled={submittingItem || !hasViewed}
-            title={hasViewed ? 'Approve this receipt' : 'View the receipt first to unlock approval'}
+            disabled={submittingItem}
+            title="Approve this receipt"
           >
             Approve as-is
           </button>
         </div>
         <div className="muted" style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>
-          {hasViewed
-            ? 'Approving marks the invoice as reviewed and removes it from this queue.'
-            : 'Open the receipt once to unlock approval. No blind approvals.'}
+          Approving marks the invoice as reviewed and removes it from this queue.
         </div>
       </form>
     );
@@ -316,7 +314,7 @@ export function ReviewQueue() {
               reviewItem
                 ? {
                     label: submitting[reviewItem.id] ? 'Approving…' : 'Approve as-is',
-                    disabled: !viewed[viewerInvoiceId] || Boolean(submitting[reviewItem.id]),
+                    disabled: Boolean(submitting[reviewItem.id]),
                     onClick: () => {
                       void handleApprove(reviewItem.id);
                       setViewerInvoiceId(null);

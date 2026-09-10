@@ -170,18 +170,30 @@ export async function fetchInvoicePreview(invoiceId: string): Promise<Blob> {
   return data;
 }
 
-/** Download the approved-invoices CSV via authenticated blob (no URL leaks). */
-export async function downloadCsv(status?: string): Promise<void> {
-  const { data } = await api.get<Blob>('/api/export/csv', {
-    responseType: 'blob',
-    params: status ? { status } : undefined,
-  });
+/** Download a generated file blob and trigger a browser save. */
+async function downloadBlob(path: string, filename: string): Promise<void> {
+  const { data } = await api.get<Blob>(path, { responseType: 'blob' });
   const url = URL.createObjectURL(data);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `invoxa_export_${status || 'all'}.csv`;
+  anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+/** Download the approved-invoices CSV via authenticated blob (no URL leaks). */
+export async function downloadCsv(status?: string): Promise<void> {
+  await downloadBlob('/api/export/csv', `invoxa_export_${status || 'all'}.csv`);
+}
+
+/** Download the export as Excel (XLSX) for Zoho Books / Excel import. */
+export async function downloadXlsx(status?: string): Promise<void> {
+  await downloadBlob('/api/export/xlsx', `invoxa_export_${status || 'all'}.xlsx`);
+}
+
+/** Download a Tally Prime XML voucher import file. */
+export async function downloadTallyXml(status?: string): Promise<void> {
+  await downloadBlob('/api/export/tally-xml', `invoxa_tally_${status || 'all'}.xml`);
 }
 
 export async function fetchInvoices(): Promise<InvoiceSummary[]> {

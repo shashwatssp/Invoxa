@@ -1,159 +1,191 @@
 # Invoxa
 
-**The finance function for businesses that never had one.**
+**AI-powered invoice and accounts-payable automation for Indian micro-businesses.**
 
-Invoxa reads vendor invoices — a WhatsApp photo, a scanned PDF, an email
-attachment, whatever form it arrives in — and turns them into clean,
-categorized, Tally/Zoho-ready records, catching the duplicates and mistakes
-a human would miss on a Tuesday afternoon with forty other things to do.
+Upload a vendor invoice. In seconds, Invoxa reads it, extracts every field with a confidence score, checks it against your history, and either books it or hands it to you for a two-second review. At the end of the week you get a clean export for Tally or Zoho Books and a plain-English summary of where your money is going.
+
+This is not meant to replace a finance team. It is meant to be the finance function for businesses that never had one.
 
 ---
 
 ## The problem
 
-78% of Indian MSMEs still process invoices by hand. A vendor invoice lands
-in a folder or an inbox, and someone — usually the owner, not an
-accountant, because a 5-person shop doesn't have one — has to open it, read
-it, and retype the numbers into Excel or Tally.
+Indian micro and small enterprises (MSMEs) process invoices almost entirely by hand. A vendor invoice arrives as a PDF, a WhatsApp photo, a scan, or an email attachment — in no standard format — and someone has to read it, retype the numbers into Excel or Tally, check it isn't a duplicate, and decide which expense category it belongs to.
 
-That process is slow and it is not actually accurate, even though the
-inaccuracy is mostly invisible because nobody is measuring it:
+The scale of the problem, per Razorpay's "Fix My Itch" research:
 
 | Metric | Value |
-|---|---|
-| Cost per invoice, manual processing | ₹150–300 |
-| Time to process one invoice, end to end | 5–15 days |
-| Manual data-entry error rate, normal load | 1–4% |
-| Manual data-entry error rate, high load | 18–40% |
-| Share of all invoice errors from manual entry | 60%+ |
-| Addressable MSMEs in India | 63.4 million |
+| --- | --- |
+| Companies still doing manual invoice processing | 78% |
+| Cost per invoice (manual) | ₹150–300 |
+| Time to process one invoice end-to-end | 5–15 days |
+| Manual data-entry error rate (normal load) | 1–4% |
+| Manual data-entry error rate (high load) | 18–40% |
+| Share of all invoice errors caused by manual entry | 60%+ |
+| Addressable MSMEs in India | 63.4 million (63.1M are 1–10 employee "micro" businesses) |
 
-Three things cause this, and none of them are the business owner's fault:
+The root cause, in three parts:
 
-1. **No standard invoice format.** Every vendor sends invoices differently.
-2. **No dedicated finance headcount.** There's no accountant checking every
-   line before it goes into the books.
-3. **Existing AP automation is built for enterprises.** It's priced and
-   designed for teams processing 10,000+ invoices a month, not a shop
-   processing 50.
+1. **No standard invoice format** — every vendor sends invoices differently.
+2. **No dedicated finance headcount** — a 5-person shop has no accountant checking every line.
+3. **Existing AP automation is built for enterprises** — priced and designed for teams processing 10,000+ invoices/month, not a shop processing 50.
 
-This isn't a tooling gap so much as a size gap — the tools that exist assume
-a finance team that this segment doesn't have.
+The manual process isn't just slow — it's also not actually accurate. It's unaudited risk that happens to be invisible because no one is measuring it.
 
----
+## What we're building
 
-## What Invoxa does
+A small business owner (or their one bookkeeper) receives a vendor invoice — a courier receipt photographed on WhatsApp, or a raw-materials supplier's PDF emailed over. Today, that invoice sits in a folder or inbox until someone manually opens it, reads it, and types it into Tally.
 
-1. Upload the invoice (or forward it) to the dashboard.
-2. The extraction pipeline reads it — trying the fast path first (native PDF
-   text layer, then OCR for scans and photos), pulling out vendor name,
-   invoice number, amount, GSTIN, due date, and line items, each field
-   tagged with a confidence score.
-3. If confidence is too low for the fast path to trust itself, the invoice
-   goes to a vision-LLM fallback instead of guessing.
-4. Independent checks run regardless of extraction method: is the GSTIN
-   checksum valid? Have we seen this vendor + amount + date combination
-   before (possible duplicate)? Does this amount look unusual for this
-   vendor's history (possible anomaly)?
-5. Clean, high-confidence invoices flow straight through. Anything flagged
-   — low confidence, a possible duplicate, an anomaly — goes to a human
-   review queue instead of being silently pushed forward.
-6. The owner gets a CSV they can import into Tally or Zoho Books, and a
-   plain-English weekly digest: *"₹84,200 payable this week, 41 invoices
-   processed automatically, 3 flagged for your review."
+With Invoxa:
 
-Invoxa isn't trying to replace a finance team. It's trying to be the finance
-function for the businesses that never had one.
+1. They upload the invoice to their dashboard.
+2. Within seconds, the extraction pipeline reads the document and pulls out the vendor name, invoice number, amount, GST number, due date, and line items — each field tagged with a confidence score.
+3. The system independently checks: is the GST number valid? Have we seen this exact vendor + number + amount combination before (possible duplicate)? Do the line items actually add up to the total?
+4. If everything is clean and high-confidence, the invoice flows straight through. If anything is uncertain, duplicate-flagged, or inconsistent, it's routed to a human review queue — never silently pushed forward.
+5. The owner downloads a clean file they can import into Tally or Zoho Books (CSV, Excel, or Tally XML), plus a plain-English weekly summary: "₹84,200 payable this week, 41 invoices processed automatically, 3 flagged for your review."
 
----
+## How accuracy is ensured
 
-## Why this is trustworthy, not just automated
+A tool that silently mis-enters a number into someone's books is worse than no tool at all. Invoxa leans on four independent layers rather than trusting the model to be right:
 
-A tool that silently mis-enters a number into someone's books is worse than
-no tool at all. Invoxa leans on layered, independent checks rather than
-trusting any single extraction to be right:
+- **Confidence scoring on every field.** Extraction isn't a black box — every value (vendor, amount, GST number, dates) carries a confidence score derived from how it was found: checksum-validated GSTINs and labeled amounts score higher than loose regex hits. Clean invoices score 85–95% and auto-approve; anything below 80% or with a failed validation is flagged, never silently accepted.
+- **Rule-based validation, not just AI judgment.** GST numbers are checked against India's actual GSTIN checksum algorithm — a deterministic, non-AI check that either passes or fails. Line items must arithmetically reconcile with the invoice total within a stated tolerance.
+- **Cross-referencing against history.** Duplicate detection (same vendor + invoice number + amount) acts as a second, independent error-catching layer that doesn't depend on the extraction being perfect in the first place.
+- **Continuous measurement.** Every time a human corrects a field, that correction is logged. Over time this produces a real, measured accuracy rate — not a marketing claim — with a target of a sub-1% effective error rate once human review is factored in.
 
-- **OCR and regex extraction first**, with structured rules for GSTIN,
-  amounts, and dates — deterministic where deterministic is possible,
-  rather than sending every invoice to an LLM by default.
-- **A vision-LLM fallback**, used only when confidence is genuinely low —
-  which keeps it cheap enough to run on a free API tier and keeps the
-  primary path auditable.
-- **Rule-based validation that doesn't depend on the AI being right** — the
-  GSTIN checksum either passes or fails; duplicate and anomaly detection
-  compare against real history, independent of how the extraction happened.
-- **Confidence scores on every field**, visibly flagged, never silently
-  accepted.
-- **Every human correction is logged**, which turns "we think it's
-  accurate" into a real, measured number over time instead of a marketing
-  claim.
-- **No financial action is ever auto-executed.** Invoxa extracts and flags.
-  A human approves before anything touches an export or a filing.
+The honest framing: the AI won't be 100% accurate at extraction. The system is designed so it doesn't need to be — it needs to know when it might be wrong and hand that specific case to a person.
 
----
+## Where humans stay in the loop
+
+Human involvement is deliberately placed at the points where mistakes are expensive, not distributed evenly across the whole process:
+
+- **Review queue for flagged items only** — low-confidence extractions, potential duplicates, and amounts that don't reconcile land in front of a person. Clean, high-confidence invoices never require a human touch.
+- **Side-by-side verification** — the original receipt renders right next to the extracted data (page-1 thumbnails in the queue, full document in the viewer), so a human can visually confirm a field in about two seconds rather than re-reading the whole document.
+- **No financial action is ever auto-executed.** The agent extracts and flags — it does not pay, file, or submit anything on its own. A human approves before anything touches payments, exports, or filings.
+- **Correction tracking** — every human edit is persisted, feeding the measured-accuracy loop.
+
+In short: the AI does the reading and the first pass of judgment; the human does the final call on anything uncertain or consequential.
+
+## Time savings for end users
+
+Based on typical volumes for a small Indian business (50–200 invoices/month) and a manual processing time of roughly 5–10 minutes per invoice:
+
+| Business size | Invoices/month | Manual time/month | With Invoxa | Time saved |
+| --- | --- | --- | --- | --- |
+| Small | 50 | ~4–8 hours | ~30–60 min | ~85–90% |
+| Mid | 150 | ~12–25 hours | ~1.5–3 hours | ~85–90% |
+| Larger micro-SME | 600 | ~50–100 hours | ~6–10 hours | ~85–90% |
+
+The realistic promise: a business that spends a full workday a week on invoices should be able to get that down to under an hour, with the remaining time spent only on the handful of items the system flagged as genuinely needing a human eye.
+
+## The benefit
+
+- **Time back** — hours per week returned to the owner or bookkeeper, who is usually doing this on top of an actual job, not as their job.
+- **Fewer costly mistakes** — duplicate payments and mis-entered amounts caught before they become a bank transfer, not after.
+- **Books that are actually current** — instead of a shoebox of invoices reconciled once a quarter under deadline pressure, invoices flow into Tally/Zoho continuously.
+- **Visibility without a finance hire** — the weekly plain-English digest gives an owner a cash-flow snapshot they'd otherwise only get by asking an accountant.
+- **Priced for the business it's actually built for** — free for the smallest shops (up to 20 invoices/month), scaling to a few thousand rupees a month rather than an enterprise contract.
+
+## Where this sits in the market
+
+AI-powered invoice and AP automation is an active, fairly crowded category — but it is underserved at the specific size and price point Invoxa targets.
+
+- **Global / enterprise-oriented players** (BILL, Stampli, Tipalti, Vic.ai, Medius) offer mature AP automation, but they're built and priced for mid-market to enterprise finance teams — the opposite of the messy, low-volume, no-finance-team reality of a 5-person Indian shop.
+- **India-focused AP/spend platforms** (Mysa, RazorpayX, EnKash, Volopay) serve the Indian startup/SME market, but several require a minimum monthly transaction volume (around ₹10 lakh/month) to unlock full value, which puts them out of reach for genuinely micro businesses.
+- **India-specific GST-native tools** (such as Plyndrox Payable AI) target the same underserved segment, accepting PDFs, images, and Gmail attachments with GSTIN and GST-breakdown extraction.
+
+What's genuinely differentiated in Invoxa, versus most of the above:
+
+1. **Confidence-scored extraction with visible flagging**, rather than a black-box "trust the OCR" approach — epistemic honesty about uncertainty as a first-class feature.
+2. **A hard rule that no financial action is ever auto-executed** — a design constraint, not a configurable setting, which matters for a business owner with no finance team to catch a runaway automation.
+3. **A free tier genuinely usable for the smallest shops** (20 invoices/month) rather than a free-trial funnel.
+4. **Built around India's actual invoice chaos** — WhatsApp photos, scans, and every layout under the sun — and around Tally, which remains the dominant bookkeeping tool for this segment.
+
+The category is proven and competitive; the specific combination of (a) true micro-SME pricing, (b) GST/Tally-native design, and (c) a human-in-the-loop accuracy model built as a first-class feature rather than an afterthought is the actual differentiation — not the underlying idea of "AI reads your invoices."
 
 ## Architecture
 
-```
-Browser → Frontend (Vercel/Netlify) → Backend API (Render, FastAPI)
-                                            │
-                              OCR + regex ──┼── Gemini 2.5 Flash (fallback only)
-                                            │
-                                       Supabase (Postgres + Storage)
-```
+A two-service deployment on Vercel, backed by Supabase:
 
-| Layer | Tech |
-|---|---|
-| Backend | Python 3.12 + FastAPI, hosted on Render (free tier) |
-| Frontend | React 18 + Vite 5 + TypeScript, hosted on Vercel/Netlify |
-| Data | Supabase Postgres + Storage |
-| OCR | Tesseract 5, PyMuPDF, pdfplumber |
-| Validation | python-stdnum (GSTIN mod-36) + custom anomaly/duplicate checks |
-| Fallback extraction | Gemini 2.5 Flash |
-| Secret scanning | gitleaks, pre-commit + CI |
+| Layer | Technology | Notes |
+| --- | --- | --- |
+| Frontend | React + Vite + TypeScript | Mobile-first design system, no UI framework; pdf.js receipt viewing |
+| Backend | FastAPI (Python 3.12) | Serverless on Vercel; all routes authenticated with JWT |
+| Database | Supabase (Postgres + Storage) | Invoices, vendors, users, extraction fields, review queue, corrections |
+| Extraction | PyMuPDF, pdfplumber, pytesseract (optional), Gemini fallback | Evidence-weighted confidence scoring; text-layer first, OCR for scans |
 
-The free-tier backend sleeps when idle. The frontend calls `/health` on
-load and shows a short "waking up" state instead of letting the first real
-request time out — this is why `/health` exists as its own endpoint rather
-than being folded into another route.
+### Extraction pipeline
 
----
+1. Text-layer extraction (pdfplumber, then PyMuPDF), falling back to Tesseract OCR for scanned documents.
+2. Regex rules tuned per layout family: Indian GST, international (USD/EUR/CHF), delivery notes, airline breakdowns.
+3. Evidence-weighted per-field confidence: GSTIN checksum validation, labeled vs. derived amounts, arithmetic consistency (subtotal + tax = total).
+4. Validation: GSTIN checksum, duplicate detection, line-item reconciliation, date sanity.
+5. Auto-approve at 80%+ overall confidence with no anomalies; otherwise queue for review with a human-readable reason.
+6. Gemini vision fallback for very-low-confidence documents when an API key is configured.
 
-## Current status
+### Export formats
 
-14 sprints built: schema and migrations, OCR-first extraction pipeline with
-GSTIN/anomaly/duplicate validation, FastAPI endpoints, the review queue with
-correction logging, CSV export for Tally/Zoho, weekly digest generation,
-CI with secret scanning, and the React frontend (upload, review queue,
-dashboard). 117 backend tests passing.
+- **CSV** — Tally/Zoho-compatible column layout.
+- **Excel (XLSX)** — native import into Zoho Books, Excel, and Google Sheets.
+- **Tally XML** — Purchase vouchers ready for Gateway of Tally > Import > XML.
 
-See `ARCHITECTURE.md` for the full design and `AUDIT_LOG.md` for the
-build's decision history.
+## Developer quickstart
 
----
-
-## Getting started
+### Backend
 
 ```bash
-git clone <repo-url>
-cd invoxa
-cp .env.example .env   # fill in Supabase and Gemini keys — never commit .env
-docker compose up      # local Postgres + services
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --port 8000
 ```
 
-Frontend and backend run separately in dev — see `frontend/README.md` and
-`backend/README.md` for service-specific setup once those exist.
+Environment variables (copy `.env.example` to `.env` at the repo root):
 
----
+```
+SUPABASE_URL=...
+SUPABASE_PUBLISHABLE_KEY=...
+SUPABASE_SERVICE_KEY=...
+SECRET_KEY=<random 64-hex string; required for stable JWT sessions>
+GEMINI_API_KEY=...          # optional, enables the vision fallback
+DATABASE_URL=...            # optional, for CLI migrations
+```
 
-## Roadmap
+Apply migrations in your Supabase SQL editor: `migrations/0001_init.sql`, then `migrations/0002_auth.sql` (kept out of the repo — see `.gitignore`).
 
-Near-term priorities: reproducible CI (commit the frontend lockfile, make
-lint actually fail the build), IST-correct digest boundaries, and wiring
-review resolution through to invoice status. Longer-term: additional Indian
-language OCR support once real usage shows which languages actually appear
-in flagged invoices, Excel/JSON export, and an automated email digest.
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev      # http://localhost:5173, API proxied to :8000
+```
+
+### Tests
+
+```bash
+cd backend && python -m pytest tests -q          # 145+ unit/integration tests
+python -m ruff check backend                     # lint
+cd frontend && npm run typecheck && npm run build
+```
+
+### End-to-end validation
+
+```bash
+cd backend/test-assets
+INVOXA_BASE_URL=https://your-deployment.vercel.app python run_e2e.py
+```
+
+Signs up two accounts, uploads every test PDF, asserts ground-truth fields, verifies per-account data isolation, ownership enforcement on receipts and previews, the review workflow, duplicate detection, and the digest.
+
+### Deployment
+
+Vercel Services deploys both halves from one repo, one domain:
+
+- `frontend` — Vite, SPA rewrite for client-side routing.
+- `backend` — FastAPI, entrypoint `api/index.py`, function timeout raised to 60s for extraction.
+
+`vercel.json` at the repo root owns all public routing: `/api/*` and `/health` reach the backend, everything else the frontend. Secrets are configured as project environment variables — nothing sensitive is committed.
 
 ## License
 
-MIT License
+Proprietary — all rights reserved.

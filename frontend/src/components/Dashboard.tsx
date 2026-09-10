@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   downloadCsv,
+  downloadTallyXml,
+  downloadXlsx,
   fetchDigest,
   fetchInvoices,
   friendlyError,
@@ -73,23 +75,32 @@ export function Dashboard() {
           <h1>Dashboard</h1>
           <p className="muted">Your invoices at a glance.</p>
         </div>
-        <button
-          type="button"
-          className="button"
-          disabled={exporting}
-          onClick={async () => {
-            setExporting(true);
-            try {
-              await downloadCsv('auto_approved');
-            } catch (err) {
-              setError(friendlyError(err, 'Could not download the CSV.'));
-            } finally {
-              setExporting(false);
-            }
-          }}
-        >
-          {exporting ? 'Preparing…' : 'Download CSV'}
-        </button>
+        <div className="row-actions" role="group" aria-label="Export invoices">
+          {([
+            { key: 'csv', label: 'CSV', run: downloadCsv },
+            { key: 'xlsx', label: 'Excel', run: downloadXlsx },
+            { key: 'tally', label: 'Tally XML', run: downloadTallyXml },
+          ] as const).map(({ key, label, run }) => (
+            <button
+              key={key}
+              type="button"
+              className="button button--secondary"
+              disabled={exporting}
+              onClick={async () => {
+                setExporting(true);
+                try {
+                  await run('auto_approved');
+                } catch (err) {
+                  setError(friendlyError(err, `Could not download the ${label} file.`));
+                } finally {
+                  setExporting(false);
+                }
+              }}
+            >
+              {exporting ? 'Preparing…' : `Export ${label}`}
+            </button>
+          ))}
+        </div>
       </header>
 
       {error && <div className="error-banner">{error}</div>}
