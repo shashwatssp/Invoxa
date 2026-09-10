@@ -19,7 +19,6 @@ pypdf>=5.0.0
 
 # Regex-based validation
 python-stdnum>=2.2.0
-bharatutils>=1.3.0
 
 # HTTP client (Gemini API fallback)
 httpx>=0.27.0
