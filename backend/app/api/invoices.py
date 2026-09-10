@@ -157,12 +157,12 @@ async def upload_and_register(file: UploadFile = File(...), user=Depends(get_cur
         if vendor_id:
             _db_update_vendor(invoice_id, vendor_id)
 
-    # Update status and review queue
+    # Update status and review queue with the REAL causes, not a generic label
     if result.needs_review:
         update_invoice_status(invoice_id, InvoiceStatus.FLAGGED)
         add_to_review_queue(
             invoice_id,
-            reason=f"Low confidence fields detected (overall: {result.overall_confidence})"
+            reason="; ".join(result.review_reasons) or "Flagged for review",
         )
     else:
         update_invoice_status(invoice_id, InvoiceStatus.AUTO_APPROVED)
@@ -206,7 +206,7 @@ async def run_extraction(invoice_id: str, user=Depends(get_current_user)):
         update_invoice_status(invoice_id, InvoiceStatus.FLAGGED)
         add_to_review_queue(
             invoice_id,
-            reason=f"Low confidence fields detected (overall: {result.overall_confidence})"
+            reason="; ".join(result.review_reasons) or "Flagged for review",
         )
     else:
         update_invoice_status(invoice_id, InvoiceStatus.AUTO_APPROVED)

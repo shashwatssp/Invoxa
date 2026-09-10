@@ -6,9 +6,28 @@ from app.config import CONFIDENCE_THRESHOLD
 from app.extraction.ocr import extract_text
 from app.extraction.regex_rules import extract_all_fields
 from app.models.invoice import ExtractionResult
-from app.validation.anomaly import should_flag_for_review
+from app.validation.anomaly import detect_anomalies, should_flag_for_review
 from app.validation.duplicate import is_duplicate
 from app.validation.gstin import validate_gstin
+
+# Human-readable text for each anomaly code shown in the review queue.
+ANOMALY_TEXT = {
+    "missing_invoice_number": "Invoice number not found",
+    "missing_total_amount": "Could not read the amount",
+    "missing_vendor_gstin": "GSTIN missing on an Indian GST invoice",
+    "amount_mismatch": "Line items do not add up to the total",
+    "future_invoice_date": "Invoice date is in the future",
+    "unparseable_invoice_date": "Could not read the dates",
+    "due_date_before_invoice_date": "Due date is before the invoice date",
+    "invalid_amount": "Amount is zero or negative",
+    "very_low_confidence": "Text could barely be read",
+}
+
+
+def _friendly_anomaly(code: str) -> str:
+    """Map an anomaly code (may carry a suffix after ': ') to readable text."""
+    base = code.split(":", 1)[0].strip()
+    return ANOMALY_TEXT.get(base, code)
 
 # Relative importance of each field when scoring overall confidence.
 # The overall score is the weighted mean over APPLICABLE fields only:
@@ -184,11 +203,11 @@ def extract_from_invoice(file_bytes, invoice_id):
         raw_text=text,
     )
 
-    # Step 6: Duplicate check (anomalies are evaluated inside
-    # should_flag_for_review).
+    # Step 6: Duplicate check and honest, specific review reasons.
     has_duplicates = is_duplicate(
         result.vendor_gstin, result.invoice_number, result.total_amount
     )
+    anomalies = detect_anomalies(result, gstin_applicable=gst_applicable)
 
     # Determine if review is needed: low overall confidence, real anomalies,
     # duplicates, or an Indian GST document without a valid GSTIN.
@@ -197,6 +216,18 @@ def extract_from_invoice(file_bytes, invoice_id):
         or (gst_applicable and not gstin_valid)
         or has_duplicates
     )
+
+    if needs_review:
+        reasons = [_friendly_anomaly(code) for code in anomalies]
+        if gst_applicable and not gstin_valid:
+            reasons.append("GSTIN failed validation")
+        if has_duplicates:
+            reasons.append("Possible duplicate of an existing invoice")
+        if overall < CONFIDENCE_THRESHOLD:
+            reasons.append(
+                f"Low extraction confidence ({round(overall * 100)}%)"
+            )
+        result.review_reasons = list(dict.fromkeys(reasons)) or ["Flagged for review"]
 
     # If still very low confidence, try Gemini fallback
     if needs_review and overall < 0.3 and GEMINI_FALLBACK_AVAILABLE:

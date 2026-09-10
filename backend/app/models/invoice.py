@@ -53,6 +53,7 @@ class ExtractionResult(BaseModel):
     confidence: float | None = None
     overall_confidence: float | None = None
     needs_review: bool = False
+    review_reasons: list[str] = []
     raw_text: str | None = None
 
 
