@@ -177,6 +177,19 @@ def update_invoice_status(invoice_id: str, status: InvoiceStatus) -> None:
     _db().table("invoices").update({"status": status.value}).eq("id", invoice_id).execute()
 
 
+def delete_invoice(invoice_id: str) -> bool:
+    """Delete an invoice and everything hanging off it.
+
+    Removes the extraction fields and any review-queue entries that
+    reference the invoice, then the invoice row itself. Returns True
+    when the invoice row existed (and is now gone).
+    """
+    _db().table("extraction_fields").delete().eq("invoice_id", invoice_id).execute()
+    _db().table("review_queue").delete().eq("invoice_id", invoice_id).execute()
+    result = _db().table("invoices").delete().eq("id", invoice_id).execute()
+    return bool(result.data)
+
+
 def save_extraction_result(invoice_id: str, result: ExtractionResult) -> None:
     """Save extraction results as individual extraction_fields rows."""
     fields_to_save = []

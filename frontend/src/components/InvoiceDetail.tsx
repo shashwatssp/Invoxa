@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { fetchInvoice, friendlyError, type InvoiceDetail as InvoiceDetailData } from '@/lib/api';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  deleteInvoice,
+  fetchInvoice,
+  friendlyError,
+  type InvoiceDetail as InvoiceDetailData,
+} from '@/lib/api';
 import { confidenceBand, formatDate, formatINR, statusTone } from '@/lib/format';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
 
 const FIELD_LABELS: Record<string, string> = {
@@ -30,10 +36,13 @@ function ConfidenceMeter({ value }: { value: number | null | undefined }) {
 
 export function InvoiceDetail() {
   const { invoiceId } = useParams<{ invoiceId: string }>();
+  const navigate = useNavigate();
   const [invoice, setInvoice] = useState<InvoiceDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,9 +149,40 @@ export function InvoiceDetail() {
         )}
       </section>
 
-      <div style={{ marginTop: '1rem' }}>
+      <div style={{ marginTop: '1rem', display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
         <Link className="button button--secondary" to="/app">Back to dashboard</Link>
+        <button
+          type="button"
+          className="button button--danger"
+          style={{ marginLeft: 'auto' }}
+          onClick={() => setConfirmDelete(true)}
+        >
+          Delete invoice
+        </button>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete this invoice?"
+        body={`This permanently removes ${invoice.invoice_number ?? 'this invoice'}, its receipt file, and its review entry. This cannot be undone.`}
+        confirmLabel="Delete permanently"
+        danger
+        busy={deleting}
+        onConfirm={async () => {
+          if (!invoiceId) return;
+          setDeleting(true);
+          try {
+            await deleteInvoice(invoiceId);
+            navigate('/app', { replace: true });
+          } catch (err) {
+            setError(friendlyError(err, 'Could not delete this invoice.'));
+            setConfirmDelete(false);
+          } finally {
+            setDeleting(false);
+          }
+        }}
+        onClose={() => setConfirmDelete(false)}
+      />
 
       {showReceipt && invoiceId && (
         <ReceiptViewer

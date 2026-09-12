@@ -111,7 +111,7 @@ A two-service deployment on Vercel, backed by Supabase:
 
 | Layer | Technology | Notes |
 | --- | --- | --- |
-| Frontend | React + Vite + TypeScript | Mobile-first design system, no UI framework; pdf.js receipt viewing |
+| Frontend | React + Vite + TypeScript | Mobile-first design system, no UI framework; light/dark themes; pdf.js receipt viewing |
 | Backend | FastAPI (Python 3.12) | Serverless on Vercel; all routes authenticated with JWT |
 | Database | Supabase (Postgres + Storage) | Invoices, folders, vendors, users, extraction fields, review queue, corrections |
 | Extraction | PyMuPDF, pdfplumber, pytesseract (optional), Gemini fallback | Evidence-weighted confidence scoring; text-layer first, OCR for scans |
@@ -142,7 +142,20 @@ Uploads can be filed into flat, per-account folders (per client, project, or sho
 
 ### Dashboard search & filters
 
-The invoice list can be narrowed with server-side filters, combinable with the folder chips: a free-text **search** (case-insensitive substring over invoice number and vendor name), a **status** filter (pending / needs review / auto-approved / reviewed / exported), and an upload-**date range**. Filters re-run the query without wiping the current view, and a Clear button resets them in one tap.
+The invoice list can be narrowed with server-side filters, combinable with the folder chips: a free-text **search** (case-insensitive substring over invoice number and vendor name), a **status** filter (pending / needs review / auto-approved / reviewed / exported), and an upload-**date range** (with friendly "Choose date" hints when empty). Filters re-run the query without wiping the current view, and a Clear button resets them in one tap.
+
+### Managing invoices
+
+- **Upload Done markers** — every uploaded file shows a green "Done · Added to <folder>" marker (or "No folder"), so you always know the upload landed where you intended. Changing the folder after uploading re-files the batch and confirms with a toast.
+- **Move to folder in bulk** — tick invoices on the dashboard and file them into any folder in one action.
+- **Delete an invoice** — a wrong upload can be removed permanently from its detail page (with a confirmation), including the stored receipt file and any review-queue entries.
+- **Self-healing review queue** — flagged invoices always have a pending review item; if an entry was lost or resolved before status-syncing existed, it is re-enqueued automatically so the dashboard "needs review" count and the queue always agree.
+- **Clean 404s** — unknown URLs show a proper "page not found" screen instead of silently redirecting.
+
+### Account, sessions & appearance
+
+- **Account tab** — profile and session controls on every device: the bottom tab bar on phones includes Account, so signing out is always one tap away (the desktop nav keeps its Sign out button too).
+- **Dark mode** — System, Light, and Dark themes in Account. System follows the device setting (and live-tracks changes); the choice is remembered across sessions and applied before first paint, so there's no flash.
 
 ### AI features
 
@@ -187,7 +200,7 @@ npm run dev      # http://localhost:5173, API proxied to :8000
 ### Tests
 
 ```bash
-cd backend && python -m pytest tests -q          # 200+ unit/integration tests
+cd backend && python -m pytest tests -q          # 220+ unit/integration tests
 python -m ruff check backend                     # lint
 cd frontend && npm run typecheck && npm run build
 ```

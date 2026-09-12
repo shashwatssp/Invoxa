@@ -92,3 +92,14 @@ def download_invoice(storage_path: str) -> bytes:
     """Download an invoice file from Supabase Storage."""
     client = get_client()
     return client.storage.from_(INVOICE_BUCKET).download(storage_path)
+
+
+def delete_invoice_file(storage_path: str) -> None:
+    """Best-effort delete of the receipt file from Storage.
+
+    A storage failure never blocks the invoice row deletion - the
+    dashboard must stay consistent even if the object lingers.
+    """
+    client = get_client()
+    with contextlib.suppress(Exception):
+        client.storage.from_(INVOICE_BUCKET).remove([storage_path])

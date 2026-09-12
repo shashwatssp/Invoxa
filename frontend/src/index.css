@@ -24,30 +24,31 @@
   --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
   --radius: 0.75rem;
   --nav-height: 3.5rem;
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #0b1120;
-    --color-fg: #e2e8f0;
-    --color-muted: #94a3b8;
-    --color-card: #111a2e;
-    --color-card-alt: #16203a;
-    --color-border: #26324d;
-    --color-primary: #3b82f6;
-    --color-primary-strong: #60a5fa;
-    --color-primary-soft: rgba(59, 130, 246, 0.16);
-    --color-success: #4ade80;
-    --color-success-soft: rgba(74, 222, 128, 0.14);
-    --color-warning: #fbbf24;
-    --color-warning-soft: rgba(251, 191, 36, 0.14);
-    --color-danger: #f87171;
-    --color-danger-soft: rgba(248, 113, 113, 0.14);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
-    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
-  }
+/* Dark theme: applied via <html data-theme="dark"> by the theme helper
+   (System preference is resolved in JS so the user can always override). */
+:root[data-theme='dark'] {
+  --color-bg: #0b1120;
+  --color-fg: #e2e8f0;
+  --color-muted: #94a3b8;
+  --color-card: #111a2e;
+  --color-card-alt: #16203a;
+  --color-border: #26324d;
+  --color-primary: #3b82f6;
+  --color-primary-strong: #60a5fa;
+  --color-primary-soft: rgba(59, 130, 246, 0.16);
+  --color-success: #4ade80;
+  --color-success-soft: rgba(74, 222, 128, 0.14);
+  --color-warning: #fbbf24;
+  --color-warning-soft: rgba(251, 191, 36, 0.14);
+  --color-danger: #f87171;
+  --color-danger-soft: rgba(248, 113, 113, 0.14);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
 }
 
 *, *::before, *::after {
@@ -627,6 +628,36 @@ select.input {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--color-muted);
+}
+
+/* Empty date inputs read "Choose date" instead of a bare box; the
+   native ghost format text is hidden while the picker icon stays. */
+
+.date-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: 1 1 9rem;
+  min-width: 8.5rem;
+}
+
+.date-wrap__hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 2.2rem 0 0.7rem;
+  color: var(--color-muted);
+  pointer-events: none;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.date-wrap input.date-wrap--empty {
+  color: transparent;
+}
+
+.date-wrap input.date-wrap--empty::-webkit-datetime-edit {
+  color: transparent;
 }
 
 /* Digest lines */

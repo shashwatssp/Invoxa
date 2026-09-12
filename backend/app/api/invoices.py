@@ -11,6 +11,7 @@ from app.auth.dependencies import get_current_user
 from app.database import (
     add_to_review_queue,
     create_invoice,
+    delete_invoice,
     get_folder,
     get_invoice,
     get_invoices,
@@ -22,7 +23,7 @@ from app.database import (
 )
 from app.extraction.pipeline import extract_from_invoice
 from app.models.invoice import Correction, ExtractionResult, InvoiceStatus
-from app.supabase import download_invoice, upload_invoice
+from app.supabase import delete_invoice_file, download_invoice, upload_invoice
 
 router = APIRouter(prefix="/api")
 
@@ -208,6 +209,16 @@ async def register_invoice(
     """Register a new invoice after file uploaded to Storage."""
     invoice_id = create_invoice(storage_path, vendor_id, created_by=user["id"])
     return {"id": invoice_id, "storage_path": storage_path}
+
+
+@router.delete("/invoices/{invoice_id}")
+async def delete_invoice_endpoint(invoice_id: str, user=Depends(get_current_user)):
+    """Delete an owned invoice, its file, and its review-queue entries."""
+    invoice = _load_owned_invoice(invoice_id, user)
+    if invoice.get("storage_path"):
+        delete_invoice_file(invoice["storage_path"])
+    delete_invoice(invoice_id)
+    return Response(status_code=204)
 
 
 @router.patch("/invoices/{invoice_id}/folder")

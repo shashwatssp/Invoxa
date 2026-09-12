@@ -1,10 +1,12 @@
 import { NavLink, Route, Routes, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
+import { Account } from '@/components/Account';
 import { Dashboard } from '@/components/Dashboard';
 import { HealthGate } from '@/components/HealthGate';
 import { InvoiceDetail } from '@/components/InvoiceDetail';
 import { Landing } from '@/components/Landing';
 import { Login } from '@/components/Login';
+import { NotFound } from '@/components/NotFound';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { ReviewQueue } from '@/components/ReviewQueue';
 import { Signup } from '@/components/Signup';
@@ -14,6 +16,7 @@ const NAV_ITEMS = [
   { to: '/app', label: 'Dashboard', icon: IconHome, end: true },
   { to: '/app/upload', label: 'Upload', icon: IconUpload, end: false },
   { to: '/app/review', label: 'Review', icon: IconCheck, end: false },
+  { to: '/app/account', label: 'Account', icon: IconUser, end: false },
 ];
 
 function IconHome() {
@@ -40,6 +43,15 @@ function IconCheck() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M9 11 12 14 20 6" />
       <path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" />
+    </svg>
+  );
+}
+
+function IconUser() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4 3.6-6 8-6s8 2 8 6" />
     </svg>
   );
 }
@@ -85,8 +97,9 @@ function AppShell() {
           <Route index element={<Dashboard />} />
           <Route path="upload" element={<Upload />} />
           <Route path="review" element={<ReviewQueue />} />
+          <Route path="account" element={<Account />} />
           <Route path="invoices/:invoiceId" element={<InvoiceDetail />} />
-          <Route path="*" element={<Dashboard />} />
+          <Route path="*" element={<NotFound inApp />} />
         </Routes>
       </main>
       <nav className="app-tabbar" aria-label="Primary">
@@ -126,6 +139,9 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Anything else is a clean 404, never a silent redirect. */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </AuthProvider>
   );

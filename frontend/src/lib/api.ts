@@ -274,6 +274,19 @@ export async function setInvoiceFolder(invoiceId: string, folderId: string | nul
   await api.patch(`/api/invoices/${invoiceId}/folder`, { folder_id: folderId });
 }
 
+/** Permanently delete an invoice, its file, and its review-queue entries. */
+export async function deleteInvoice(invoiceId: string): Promise<void> {
+  await api.delete(`/api/invoices/${invoiceId}`);
+}
+
+/** Move several invoices into one folder (null = unfile). */
+export async function moveInvoicesToFolder(
+  invoiceIds: string[],
+  folderId: string | null,
+): Promise<void> {
+  await Promise.all(invoiceIds.map((id) => setInvoiceFolder(id, folderId)));
+}
+
 export async function fetchInvoices(
   folderId?: string | null,
   filters: InvoiceFilters = {},

@@ -5,6 +5,7 @@ import {
   fetchFolders,
   fetchInvoices,
   friendlyError,
+  moveInvoicesToFolder,
   type FolderInfo,
   type InvoiceSummary,
 } from '@/lib/api';
@@ -68,6 +69,15 @@ export function Dashboard() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Transient confirmation (e.g. after a bulk move).
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   // Debounce the search box so typing does not spam the API.
   useEffect(() => {
@@ -75,41 +85,66 @@ export function Dashboard() {
     return () => window.clearTimeout(t);
   }, [searchInput]);
 
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [invoiceList, folderList, digestPayload] = await Promise.all([
+        fetchInvoices(folderScope === 'all' ? null : folderScope, {
+          search: search || null,
+          status: statusFilter || null,
+          from: fromDate || null,
+          to: toDate || null,
+        }),
+        fetchFolders(),
+        fetchDigest(7),
+      ]);
+      setInvoices(invoiceList);
+      setFolders(folderList);
+      setDigest(digestPayload as DigestPayload);
+      // Drop selections that are no longer visible.
+      setSelected((current) => {
+        const visible = new Set(invoiceList.map((i) => i.id));
+        const next = new Set([...current].filter((id) => visible.has(id)));
+        return next.size === current.size ? current : next;
+      });
+    } catch (err) {
+      setError(friendlyError(err, 'Failed to load the dashboard.'));
+    } finally {
+      setLoading(false);
+      setHasLoaded(true);
+    }
+  };
+
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [invoiceList, folderList, digestPayload] = await Promise.all([
-          fetchInvoices(folderScope === 'all' ? null : folderScope, {
-            search: search || null,
-            status: statusFilter || null,
-            from: fromDate || null,
-            to: toDate || null,
-          }),
-          fetchFolders(),
-          fetchDigest(7),
-        ]);
-        setInvoices(invoiceList);
-        setFolders(folderList);
-        setDigest(digestPayload as DigestPayload);
-        // Drop selections that are no longer visible.
-        setSelected((current) => {
-          const visible = new Set(invoiceList.map((i) => i.id));
-          const next = new Set([...current].filter((id) => visible.has(id)));
-          return next.size === current.size ? current : next;
-        });
-      } catch (err) {
-        setError(friendlyError(err, 'Failed to load the dashboard.'));
-      } finally {
-        setLoading(false);
-        setHasLoaded(true);
-      }
-    };
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folderScope, search, statusFilter, fromDate, toDate]);
 
   const hasActiveFilters = Boolean(search || statusFilter || fromDate || toDate);
+
+  /** File every selected invoice into one folder (null = unfile). */
+  const moveSelected = async (folderId: string | null) => {
+    if (selected.size === 0 || moving) return;
+    setMoving(true);
+    try {
+      await moveInvoicesToFolder([...selected], folderId);
+      const name = folderId
+        ? folders.find((f) => f.id === folderId)?.name ?? 'the folder'
+        : 'No folder';
+      setToast(
+        selected.size === 1
+          ? `Moved 1 invoice to ${name}.`
+          : `Moved ${selected.size} invoices to ${name}.`,
+      );
+      setSelected(new Set());
+      await load();
+    } catch (err) {
+      setError(friendlyError(err, 'Could not move the invoices.'));
+    } finally {
+      setMoving(false);
+    }
+  };
 
   const clearFilters = () => {
     setSearchInput('');
@@ -255,10 +290,32 @@ export function Dashboard() {
           <section className="card">
             <div className="card__header">
               <h2>Invoices</h2>
-              <span className="muted" style={{ fontSize: '0.85rem' }}>
-                {invoices.length} total
-                {selected.size > 0 && ` · ${selected.size} selected`}
-              </span>
+              <div className="row-actions" style={{ alignItems: 'center' }}>
+                {selected.size > 0 && (
+                  <select
+                    className="input"
+                    style={{ width: 'auto', minHeight: '2.4rem', fontSize: '0.85rem' }}
+                    aria-label="Move selected invoices to folder"
+                    value=""
+                    disabled={moving}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      void moveSelected(value === 'none' ? null : value || null);
+                      e.currentTarget.value = '';
+                    }}
+                  >
+                    <option value="">{moving ? 'Moving…' : 'Move to folder…'}</option>
+                    <option value="none">No folder</option>
+                    {folders.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                )}
+                <span className="muted" style={{ fontSize: '0.85rem' }}>
+                  {invoices.length} total
+                  {selected.size > 0 && ` · ${selected.size} selected`}
+                </span>
+              </div>
             </div>
             <div className="filter-bar" role="search" aria-label="Filter invoices">
               <input
@@ -282,23 +339,29 @@ export function Dashboard() {
               </select>
               <label className="filter-bar__field">
                 <span className="filter-bar__label">From</span>
-                <input
-                  type="date"
-                  className="input filter-bar__date"
-                  aria-label="Uploaded from"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                />
+                <span className="date-wrap">
+                  {!fromDate && <span className="date-wrap__hint" aria-hidden>Choose date</span>}
+                  <input
+                    type="date"
+                    className={`input filter-bar__date${fromDate ? '' : ' date-wrap--empty'}`}
+                    aria-label="Uploaded from"
+                    value={fromDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                  />
+                </span>
               </label>
               <label className="filter-bar__field">
                 <span className="filter-bar__label">To</span>
-                <input
-                  type="date"
-                  className="input filter-bar__date"
-                  aria-label="Uploaded to"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                />
+                <span className="date-wrap">
+                  {!toDate && <span className="date-wrap__hint" aria-hidden>Choose date</span>}
+                  <input
+                    type="date"
+                    className={`input filter-bar__date${toDate ? '' : ' date-wrap--empty'}`}
+                    aria-label="Uploaded to"
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                  />
+                </span>
               </label>
               {hasActiveFilters && (
                 <button
@@ -311,13 +374,23 @@ export function Dashboard() {
               )}
             </div>
             {invoices.length === 0 ? (
-              <p className="table-empty">
-                {hasActiveFilters
-                  ? 'No invoices match your filters.'
-                  : folderScope === 'all'
-                    ? 'No invoices yet. Upload one to get started.'
-                    : 'No invoices in this folder yet.'}
-              </p>
+              <div className="table-empty">
+                {hasActiveFilters ? (
+                  'No invoices match your filters.'
+                ) : folderScope === 'all' ? (
+                  <>
+                    <p style={{ margin: '0 0 1rem' }}>
+                      No invoices yet. Upload your first one and Invoxa will
+                      read, check, and organise it automatically.
+                    </p>
+                    <Link className="button" to="/app/upload">
+                      Upload your first invoice
+                    </Link>
+                  </>
+                ) : (
+                  <p style={{ margin: 0 }}>No invoices in this folder yet.</p>
+                )}
+              </div>
             ) : (
               <>
                 {/* Desktop: table */}
@@ -414,6 +487,12 @@ export function Dashboard() {
         folders={folders}
         selectedIds={selected.size > 0 ? [...selected] : null}
       />
+
+      {toast && (
+        <div className="toast toast--success" role="status">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
