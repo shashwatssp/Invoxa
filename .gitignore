@@ -63,6 +63,9 @@ development_plan.md
 docs/plans/
 *.local.md
 
+# Internal audit log (local only, NEVER committed)
+AUDIT_LOG.md
+
 # Local tooling binaries (e.g. gitleaks.exe downloaded for verification)
 .tools/
 
