@@ -82,6 +82,10 @@ def ai_narrative(digest_dict: dict, invoices: list[dict]) -> str | None:
                     "generationConfig": {
                         "temperature": 0.4,
                         "maxOutputTokens": 512,
+                        # A short narrative needs no thinking; without this
+                        # the thinking budget eats the output and truncates
+                        # the response mid-sentence.
+                        "thinkingConfig": {"thinkingBudget": 0},
                     },
                 },
             )

@@ -210,6 +210,18 @@ async def register_invoice(
     return {"id": invoice_id, "storage_path": storage_path}
 
 
+@router.patch("/invoices/{invoice_id}/folder")
+async def set_invoice_folder(
+    invoice_id: str, folder_id: str | None = None, user=Depends(get_current_user)
+):
+    """Move an owned invoice into a folder (or unfile it with null)."""
+    _load_owned_invoice(invoice_id, user)
+    if folder_id and not get_folder(folder_id, user["id"]):
+        raise HTTPException(status_code=404, detail="Folder not found")
+    update_invoice_fields(invoice_id, {"folder_id": folder_id})
+    return {"id": invoice_id, "folder_id": folder_id}
+
+
 @router.post("/invoices/{invoice_id}/extract")
 async def run_extraction(invoice_id: str, user=Depends(get_current_user)):
     """Trigger OCR extraction + validation for an invoice."""

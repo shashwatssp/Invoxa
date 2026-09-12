@@ -41,6 +41,9 @@ class ExtractionField(BaseModel):
 
 
 class ExtractionResult(BaseModel):
+    # Which extractor produced this result: "rules" (OCR + regex) or
+    # "gemini" (AI vision fallback). Shown in the UI for transparency.
+    engine: str = "rules"
     vendor_name: str | None = None
     vendor_gstin: str | None = None
     invoice_number: str | None = None

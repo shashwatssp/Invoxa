@@ -295,6 +295,7 @@ button, input, select, textarea {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  min-width: 0; /* allow shrinking inside the grid instead of overflowing */
 }
 
 .stat__label {
@@ -310,6 +311,13 @@ button, input, select, textarea {
   font-weight: 700;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere; /* never spill out of the box */
+}
+
+/* Long values (e.g. ₹1,23,141.34) fit on one smaller line instead. */
+.stat__value--long {
+  font-size: 1.05rem;
+  line-height: 1.35;
 }
 
 .stat--success .stat__value { color: var(--color-success); }
@@ -536,6 +544,20 @@ select.input {
 .upload-item__state--flagged { color: var(--color-warning); }
 .upload-item__state--error { color: var(--color-danger); }
 
+/* Done marker: uploaded AND filed into the selected folder */
+
+.upload-item__folder {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-success);
+  margin-top: 0.15rem;
+}
+
+.upload-item__folder--pending {
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
 /* AI narrative at the top of the weekly digest */
 
 .digest-narrative {
@@ -572,6 +594,18 @@ select.input {
 .filter-bar__search { flex: 2 1 14rem; }
 
 .filter-bar__clear { flex: 0 0 auto; }
+
+.filter-bar__field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.filter-bar__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-muted);
+}
 
 /* Digest lines */
 

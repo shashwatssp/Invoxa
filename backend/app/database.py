@@ -322,6 +322,43 @@ def get_user_by_id(user_id: str) -> dict | None:
 
 # --- Review Queue ---
 
+def _missing_flagged_invoice_ids(
+    pending_rows: list[dict] | None, flagged_rows: list[dict] | None
+) -> list[str]:
+    """Flagged invoice ids that have no pending review item."""
+    pending_ids = {row.get("invoice_id") for row in (pending_rows or [])}
+    return [
+        row["id"]
+        for row in (flagged_rows or [])
+        if row.get("id") not in pending_ids
+    ]
+
+
+def backfill_review_queue(user_id: str) -> int:
+    """Ensure every flagged invoice has a pending review item.
+
+    Restores the invariant "dashboard 'needs review' count == review
+    queue length": older rows (resolved before approval synced the
+    invoice status, or whose queue entry was lost) would otherwise
+    show as needing review on the dashboard while the queue looked
+    empty. Returns the number of items created.
+    """
+    pending = _db().table("review_queue").select("invoice_id").eq(
+        "status", "pending"
+    ).execute()
+    flagged = _db().table("invoices").select("id").eq(
+        "created_by", user_id
+    ).eq("status", "flagged").execute()
+    missing = _missing_flagged_invoice_ids(pending.data, flagged.data)
+    if not missing:
+        return 0
+    _db().table("review_queue").insert([
+        {"invoice_id": inv_id, "reason": "Flagged for review", "status": "pending"}
+        for inv_id in missing
+    ]).execute()
+    return len(missing)
+
+
 def add_to_review_queue(invoice_id: str, reason: str) -> None:
     """Add an invoice to the review queue."""
     _db().table("review_queue").insert({

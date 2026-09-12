@@ -37,10 +37,15 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 ];
 
 function Stat({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
+  const text = String(value);
+  // Long money values (e.g. ₹1,23,141.34) shrink instead of overflowing.
+  const long = text.length > 11;
   return (
     <div className={`stat${tone ? ` stat--${tone}` : ''}`}>
       <span className="stat__label">{label}</span>
-      <span className="stat__value">{value}</span>
+      <span className={`stat__value${long ? ' stat__value--long' : ''}`} title={text}>
+        {text}
+      </span>
     </div>
   );
 }
@@ -275,20 +280,26 @@ export function Dashboard() {
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
-              <input
-                type="date"
-                className="input filter-bar__date"
-                aria-label="Uploaded from"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-              />
-              <input
-                type="date"
-                className="input filter-bar__date"
-                aria-label="Uploaded to"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-              />
+              <label className="filter-bar__field">
+                <span className="filter-bar__label">From</span>
+                <input
+                  type="date"
+                  className="input filter-bar__date"
+                  aria-label="Uploaded from"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                />
+              </label>
+              <label className="filter-bar__field">
+                <span className="filter-bar__label">To</span>
+                <input
+                  type="date"
+                  className="input filter-bar__date"
+                  aria-label="Uploaded to"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                />
+              </label>
               {hasActiveFilters && (
                 <button
                   type="button"

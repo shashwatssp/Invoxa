@@ -124,6 +124,7 @@ export interface InvoiceDetail extends InvoiceSummary {
 }
 
 export interface ExtractedFields {
+  engine?: string; // "rules" (OCR + regex) or "gemini" (AI vision fallback)
   vendor_name?: string | null;
   vendor_gstin?: string | null;
   invoice_number?: string | null;
@@ -266,6 +267,11 @@ export interface InvoiceFilters {
   status?: string | null;
   from?: string | null; // ISO date (yyyy-mm-dd)
   to?: string | null; // ISO date (yyyy-mm-dd)
+}
+
+/** Move an invoice into a folder (null = unfile). */
+export async function setInvoiceFolder(invoiceId: string, folderId: string | null): Promise<void> {
+  await api.patch(`/api/invoices/${invoiceId}/folder`, { folder_id: folderId });
 }
 
 export async function fetchInvoices(

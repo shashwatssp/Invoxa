@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from app.auth.dependencies import get_current_user
 from app.database import (
+    backfill_review_queue,
     get_review_item_invoice_id,
     get_review_item_owner,
     get_review_queue,
@@ -48,7 +49,14 @@ def _sync_invoice_status(review_id: str, approved: bool) -> None:
 
 @router.get("/review/queue")
 async def review_queue(user=Depends(get_current_user)):
-    """List this account's invoices flagged for review."""
+    """List this account's invoices flagged for review.
+
+    Self-healing: flagged invoices that somehow lost their pending
+    queue entry (e.g. resolved before status syncing existed) are
+    re-enqueued first, so the queue always matches the dashboard's
+    "needs review" count.
+    """
+    backfill_review_queue(user["id"])
     return get_review_queue(user["id"])
 
 

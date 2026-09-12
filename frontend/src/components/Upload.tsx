@@ -4,6 +4,7 @@ import {
   createFolder,
   fetchFolders,
   friendlyError,
+  setInvoiceFolder,
   uploadInvoice,
   type ExtractedFields,
   type FolderInfo,
@@ -19,12 +20,15 @@ interface UploadItem {
   message?: string;
   invoiceId?: string;
   extraction?: ExtractedFields;
+  // Folder this invoice currently sits in (may have been changed after upload).
+  folderId?: string | null;
+  filing?: boolean; // folder move in progress
 }
 
 const PHASE_LABEL: Record<FilePhase, string> = {
   queued: 'Queued',
   uploading: 'Processing…',
-  done: 'Approved',
+  done: 'Done',
   flagged: 'Needs review',
   error: 'Failed',
 };
@@ -44,6 +48,14 @@ export function Upload() {
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Transient confirmation so the user sees folder filing landed.
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const loadFolders = useCallback(async () => {
     try {
@@ -56,24 +68,6 @@ export function Upload() {
   useEffect(() => {
     void loadFolders();
   }, [loadFolders]);
-
-  const onCreateFolder = useCallback(async () => {
-    const name = newFolderName.trim();
-    if (!name) return;
-    setFolderError(null);
-    try {
-      const folder = await createFolder(name);
-      setFolders((current) => [
-        ...current,
-        { ...folder, invoice_count: 0, created_at: new Date().toISOString() },
-      ]);
-      setFolderId(folder.id);
-      setNewFolderName('');
-      setShowNewFolder(false);
-    } catch (err) {
-      setFolderError(friendlyError(err, 'Could not create the folder.'));
-    }
-  }, [newFolderName]);
 
   const patch = useCallback((key: string, changes: Partial<UploadItem>) => {
     setItems((current) => current.map((it) => (it.key === key ? { ...it, ...changes } : it)));
@@ -100,14 +94,75 @@ export function Upload() {
             phase: data.extraction?.needs_review ? 'flagged' : 'done',
             invoiceId: data.id,
             extraction: data.extraction,
+            folderId,
           });
         } catch (err) {
           patch(item.key, { phase: 'error', message: friendlyError(err, 'Upload failed. Please try again.') });
         }
       }
     },
-    [patch],
+    [patch, folderId],
   );
+
+  /**
+   * Destination changed: every completed upload from this session is
+   * (re)filed into the chosen folder, with a visible Done confirmation.
+   */
+  const onFolderChange = useCallback(
+    async (nextId: string | null, nameHint?: string) => {
+      setFolderId(nextId);
+      setFolderError(null);
+      const filed = items.filter(
+        (it) => it.invoiceId && (it.phase === 'done' || it.phase === 'flagged'),
+      );
+      const toMove = filed.filter((it) => (it.folderId ?? null) !== nextId);
+      if (toMove.length === 0) return;
+
+      toMove.forEach((it) => patch(it.key, { filing: true }));
+      let moved = 0;
+      for (const it of toMove) {
+        try {
+          await setInvoiceFolder(it.invoiceId!, nextId);
+          patch(it.key, { folderId: nextId, filing: false });
+          moved += 1;
+        } catch (err) {
+          patch(it.key, { filing: false });
+          setFolderError(friendlyError(err, 'Could not move the invoice to the folder.'));
+        }
+      }
+      if (moved > 0) {
+        const name = nextId
+          ? nameHint ?? folders.find((f) => f.id === nextId)?.name ?? 'the folder'
+          : 'No folder';
+        setToast(
+          moved === 1
+            ? `Done — 1 invoice added to ${name}.`
+            : `Done — ${moved} invoices added to ${name}.`,
+        );
+      }
+    },
+    [items, folders, patch],
+  );
+
+  const onCreateFolder = useCallback(async () => {
+    const name = newFolderName.trim();
+    if (!name) return;
+    setFolderError(null);
+    try {
+      const folder = await createFolder(name);
+      setFolders((current) => [
+        ...current,
+        { ...folder, invoice_count: 0, created_at: new Date().toISOString() },
+      ]);
+      setFolderId(folder.id);
+      setNewFolderName('');
+      setShowNewFolder(false);
+      // File this session's completed uploads straight into the new folder.
+      void onFolderChange(folder.id, folder.name);
+    } catch (err) {
+      setFolderError(friendlyError(err, 'Could not create the folder.'));
+    }
+  }, [newFolderName, onFolderChange]);
 
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -176,39 +231,7 @@ export function Upload() {
           onChange={handlePick}
         />
 
-        {items.length > 0 && (
-          <div className="upload-list">
-            {items.map((item) => {
-              const ex = item.extraction;
-              return (
-                <div key={item.key} className="upload-item">
-                  <div className="upload-item__main">
-                    <div className="upload-item__name">{item.file.name}</div>
-                    {ex && (
-                      <div className="upload-item__meta">
-                        {ex.invoice_number ? `#${ex.invoice_number} · ` : ''}
-                        {ex.total_amount != null ? formatINR(ex.total_amount) : 'amount not detected'}
-                        {ex.vendor_name ? ` · ${ex.vendor_name}` : ''}
-                      </div>
-                    )}
-                    {item.phase === 'error' && item.message && (
-                      <div className="upload-item__meta" style={{ color: 'var(--color-danger)' }}>{item.message}</div>
-                    )}
-                  </div>
-                  <span className={`upload-item__state upload-item__state--${item.phase}`}>
-                    {PHASE_LABEL[item.phase]}
-                  </span>
-                  {item.phase === 'done' && <ConfidenceBadge value={ex?.overall_confidence} />}
-                  {item.invoiceId && (
-                    <Link className="button button--secondary" style={{ minHeight: '2rem', padding: '0.3rem 0.7rem', fontSize: '0.8rem' }} to={`/app/invoices/${item.invoiceId}`}>
-                      View
-                    </Link>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {/* Destination first: everything uploaded in this batch lands here. */}
         <div className="folder-picker">
           <label className="folder-picker__label" htmlFor="upload-folder">
             Folder
@@ -217,7 +240,7 @@ export function Upload() {
             id="upload-folder"
             className="input"
             value={folderId ?? ''}
-            onChange={(e) => setFolderId(e.target.value || null)}
+            onChange={(e) => void onFolderChange(e.target.value || null)}
           >
             <option value="">No folder</option>
             {folders.map((f) => (
@@ -267,7 +290,65 @@ export function Upload() {
           )}
         </div>
         {folderError && <div className="error-banner">{folderError}</div>}
+
+        {items.length > 0 && (
+          <div className="upload-list">
+            {items.map((item) => {
+              const ex = item.extraction;
+              return (
+                <div key={item.key} className="upload-item">
+                  <div className="upload-item__main">
+                    <div className="upload-item__name">{item.file.name}</div>
+                    {ex && (
+                      <div className="upload-item__meta">
+                        {ex.invoice_number ? `#${ex.invoice_number} · ` : ''}
+                        {ex.total_amount != null ? formatINR(ex.total_amount) : 'amount not detected'}
+                        {ex.vendor_name ? ` · ${ex.vendor_name}` : ''}
+                      </div>
+                    )}
+                    {item.phase === 'error' && item.message && (
+                      <div className="upload-item__meta" style={{ color: 'var(--color-danger)' }}>{item.message}</div>
+                    )}
+                    {/* Done marker: uploaded AND filed where the selector points. */}
+                    {(item.phase === 'done' || item.phase === 'flagged') && item.invoiceId && (
+                      <div
+                        className={`upload-item__folder${item.filing ? ' upload-item__folder--pending' : ''}`}
+                        aria-live="polite"
+                      >
+                        {item.filing
+                          ? 'Filing…'
+                          : item.folderId
+                            ? `✓ Added to ${folders.find((f) => f.id === item.folderId)?.name ?? 'folder'}`
+                            : '✓ Uploaded · No folder'}
+                      </div>
+                    )}
+                  </div>
+                  <span className={`upload-item__state upload-item__state--${item.phase}`}>
+                    {PHASE_LABEL[item.phase]}
+                  </span>
+                  {item.phase === 'done' && <ConfidenceBadge value={ex?.overall_confidence} />}
+                  {ex?.engine === 'gemini' && (
+                    <span className="badge badge--primary" title="The AI vision fallback read this document">
+                      AI vision
+                    </span>
+                  )}
+                  {item.invoiceId && (
+                    <Link className="button button--secondary" style={{ minHeight: '2rem', padding: '0.3rem 0.7rem', fontSize: '0.8rem' }} to={`/app/invoices/${item.invoiceId}`}>
+                      View
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
+
+      {toast && (
+        <div className="toast toast--success" role="status">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

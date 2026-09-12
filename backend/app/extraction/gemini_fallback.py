@@ -126,6 +126,7 @@ def gemini_fallback(file_bytes: bytes, text: str) -> ExtractionResult | None:
 
     # Build ExtractionResult from Gemini response
     return ExtractionResult(
+        engine="gemini",
         vendor_name=fields.get("vendor_name"),
         vendor_gstin=fields.get("vendor_gstin"),
         invoice_number=fields.get("invoice_number"),
