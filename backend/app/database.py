@@ -325,6 +325,14 @@ def get_review_item_owner(review_id: str) -> str | None:
     return embed.get("created_by") if isinstance(embed, dict) else None
 
 
+def get_review_item_invoice_id(review_id: str) -> str | None:
+    """Return the invoice id a review item points at."""
+    result = _db().table("review_queue").select(
+        "invoice_id"
+    ).eq("id", review_id).limit(1).execute()
+    return result.data[0].get("invoice_id") if result.data else None
+
+
 def resolve_review_item(
     review_id: str, approved: bool, reviewed_by: str | None = None
 ) -> None:

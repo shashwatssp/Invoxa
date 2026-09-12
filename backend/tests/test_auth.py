@@ -207,7 +207,39 @@ def _resolve_capture(users, monkeypatch):
     monkeypatch.setattr(review_api, "resolve_review_item", fake_resolve)
     # Legacy rows have no owner; ownership is enforced in the endpoint.
     monkeypatch.setattr(review_api, "get_review_item_owner", lambda rid: None)
+    # No invoice linked in this fake; the status sync is covered separately.
+    monkeypatch.setattr(review_api, "get_review_item_invoice_id", lambda rid: None)
+    monkeypatch.setattr(review_api, "update_invoice_status", lambda *a, **k: None)
     return captured
+
+
+def test_resolve_marks_invoice_reviewed(users, monkeypatch):
+    """Approval syncs the invoice status so the dashboard reflects it."""
+    import app.api.review as review_api
+
+    captured = {}
+
+    def fake_resolve(review_id, approved, reviewed_by=None):
+        pass
+
+    monkeypatch.setattr(review_api, "resolve_review_item", fake_resolve)
+    monkeypatch.setattr(review_api, "get_review_item_owner", lambda rid: None)
+    monkeypatch.setattr(review_api, "get_review_item_invoice_id", lambda rid: "inv-9")
+
+    def fake_update_status(invoice_id, status):
+        captured["invoice_id"] = invoice_id
+        captured["status"] = str(status)
+
+    monkeypatch.setattr(review_api, "update_invoice_status", fake_update_status)
+
+    member = _signup().json()
+    res = client.post(
+        "/api/review/rq-1/resolve?approved=true",
+        headers={"Authorization": f"Bearer {member['token']}"},
+    )
+    assert res.status_code == 200
+    assert captured["invoice_id"] == "inv-9"
+    assert captured["status"] == "reviewed"
 
 
 def test_any_user_can_resolve_and_is_stamped(users, monkeypatch):

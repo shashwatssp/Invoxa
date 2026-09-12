@@ -45,6 +45,7 @@ export function ReviewQueue() {
   const [items, setItems] = useState<ReviewQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, DraftCorrection>>({});
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
   // Receipts the approver has opened at least once this session (approve lock).
@@ -89,11 +90,19 @@ export function ReviewQueue() {
     });
   };
 
+  // Transient confirmation so the approver sees the action landed.
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   const handleApprove = async (reviewId: string) => {
     setSubmitting((current) => ({ ...current, [reviewId]: true }));
     try {
       await resolveReview(reviewId, true);
       removeItem(reviewId, (current) => current.filter((item) => item.id !== reviewId));
+      setToast('Approved — the invoice is marked reviewed and left the queue.');
     } catch (err) {
       setError(friendlyError(err, 'Could not approve this item.'));
     } finally {
@@ -110,6 +119,7 @@ export function ReviewQueue() {
     try {
       await submitCorrection(reviewId, correction.field_name, correction.new_value.trim());
       removeItem(reviewId, (current) => current.filter((item) => item.id !== reviewId));
+      setToast('Correction saved — the invoice is marked reviewed.');
       setDraft((current) => {
         const next = { ...current };
         delete next[reviewId];
@@ -255,6 +265,11 @@ export function ReviewQueue() {
 
   return (
     <section>
+      {toast && (
+        <div className="toast toast--success" role="status">
+          {toast}
+        </div>
+      )}
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div className="card__header">
           <h2>Review queue</h2>

@@ -42,7 +42,8 @@ With Invoxa:
 2. Within seconds, the extraction pipeline reads the document and pulls out the vendor name, invoice number, amount, GST number, due date, and line items — each field tagged with a confidence score.
 3. The system independently checks: is the GST number valid? Have we seen this exact vendor + number + amount combination before (possible duplicate)? Do the line items actually add up to the total?
 4. If everything is clean and high-confidence, the invoice flows straight through. If anything is uncertain, duplicate-flagged, or inconsistent, it's routed to a human review queue — never silently pushed forward.
-5. The owner downloads a clean file they can import into Tally or Zoho Books (CSV, Excel, or Tally XML), plus a plain-English weekly summary: "₹84,200 payable this week, 41 invoices processed automatically, 3 flagged for your review."
+5. Receipts can be organized into **folders** (per client, project, or shop) at upload time, browsed with one-tap filters, and exported per folder.
+6. The owner opens the **Export Center**, picks a format (CSV, Excel, Tally XML, or a printable PDF statement), a period (last 7/14 days, this month, last month, any custom number of days/weeks/months, or everything), a folder, or a hand-picked selection of invoices — sees a live preview of what's inside — and downloads it. Plus a plain-English weekly summary: "₹84,200 payable this week, 41 invoices processed automatically, 3 flagged for your review."
 
 ## How accuracy is ensured
 
@@ -62,6 +63,7 @@ Human involvement is deliberately placed at the points where mistakes are expens
 - **Review queue for flagged items only** — low-confidence extractions, potential duplicates, and amounts that don't reconcile land in front of a person. Clean, high-confidence invoices never require a human touch.
 - **Side-by-side verification** — the original receipt renders right next to the extracted data (page-1 thumbnails in the queue, full document in the viewer), so a human can visually confirm a field in about two seconds rather than re-reading the whole document.
 - **No financial action is ever auto-executed.** The agent extracts and flags — it does not pay, file, or submit anything on its own. A human approves before anything touches payments, exports, or filings.
+- **Approval is loud, not silent.** Approving (or correcting) an invoice removes it from the queue with a visible confirmation, marks it "reviewed" across the dashboard, digest, and exports immediately — so the books reflect the decision the moment it's made.
 - **Correction tracking** — every human edit is persisted, feeding the measured-accuracy loop.
 
 In short: the AI does the reading and the first pass of judgment; the human does the final call on anything uncertain or consequential.
@@ -111,7 +113,7 @@ A two-service deployment on Vercel, backed by Supabase:
 | --- | --- | --- |
 | Frontend | React + Vite + TypeScript | Mobile-first design system, no UI framework; pdf.js receipt viewing |
 | Backend | FastAPI (Python 3.12) | Serverless on Vercel; all routes authenticated with JWT |
-| Database | Supabase (Postgres + Storage) | Invoices, vendors, users, extraction fields, review queue, corrections |
+| Database | Supabase (Postgres + Storage) | Invoices, folders, vendors, users, extraction fields, review queue, corrections |
 | Extraction | PyMuPDF, pdfplumber, pytesseract (optional), Gemini fallback | Evidence-weighted confidence scoring; text-layer first, OCR for scans |
 
 ### Extraction pipeline
@@ -123,11 +125,20 @@ A two-service deployment on Vercel, backed by Supabase:
 5. Auto-approve at 80%+ overall confidence with no anomalies; otherwise queue for review with a human-readable reason.
 6. Gemini vision fallback for very-low-confidence documents when an API key is configured.
 
-### Export formats
+### Export Center
+
+One dialog, every format, any slice of the books — modal on desktop, bottom sheet on mobile, with a live preview ("42 invoices · ₹1,23,456") before download:
 
 - **CSV** — Tally/Zoho-compatible column layout.
 - **Excel (XLSX)** — native import into Zoho Books, Excel, and Google Sheets.
 - **Tally XML** — Purchase vouchers ready for Gateway of Tally > Import > XML.
+- **PDF statement** — clean printable A4 statement (per-page running totals) for printing or emailing to a CA.
+
+Every export accepts the same optional scope: a **period** (last 7 or 14 days, this or last month, any custom number of days/weeks/months, or everything), a **status** (auto-approved, reviewed, or all), a **folder**, or a hand-picked **selection of invoices** from the dashboard. All exports stay scoped to the logged-in account.
+
+### Folders
+
+Uploads can be filed into flat, per-account folders (per client, project, or shop) — chosen once per scanning batch, filtered with one tap on the dashboard, and used as an export scope. Deleting a folder never deletes invoices; they fall back to "No folder" at the database level.
 
 ## Developer quickstart
 
@@ -150,7 +161,7 @@ GEMINI_API_KEY=...          # optional, enables the vision fallback
 DATABASE_URL=...            # optional, for CLI migrations
 ```
 
-Apply migrations in your Supabase SQL editor: `migrations/0001_init.sql`, then `migrations/0002_auth.sql` (kept out of the repo — see `.gitignore`).
+Apply migrations in your Supabase SQL editor: `migrations/0001_init.sql`, then `migrations/0002_auth.sql` and `migrations/0003_folders.sql` (kept out of the repo — see `.gitignore`; apply with `python scripts/apply_0003.py` or by hand).
 
 ### Frontend
 
@@ -163,7 +174,7 @@ npm run dev      # http://localhost:5173, API proxied to :8000
 ### Tests
 
 ```bash
-cd backend && python -m pytest tests -q          # 145+ unit/integration tests
+cd backend && python -m pytest tests -q          # 170+ unit/integration tests
 python -m ruff check backend                     # lint
 cd frontend && npm run typecheck && npm run build
 ```
@@ -175,7 +186,7 @@ cd backend/test-assets
 INVOXA_BASE_URL=https://your-deployment.vercel.app python run_e2e.py
 ```
 
-Signs up two accounts, uploads every test PDF, asserts ground-truth fields, verifies per-account data isolation, ownership enforcement on receipts and previews, the review workflow, duplicate detection, and the digest.
+Signs up two accounts, uploads every test PDF, asserts ground-truth fields, verifies per-account data isolation (invoices, folders, review queue, digest), ownership enforcement on receipts and previews, the review workflow (including approval syncing the invoice status to "reviewed"), duplicate detection, folder-scoped and period-filtered exports (CSV by id, PDF statement), and the digest.
 
 ### Deployment
 

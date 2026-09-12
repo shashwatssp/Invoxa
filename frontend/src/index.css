@@ -684,6 +684,21 @@ select.input {
     color: var(--color-muted);
   }
 
+  /* New-folder row: stack so Create/Cancel never overflow the screen. */
+  .folder-picker__new {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .folder-picker__new .input {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .folder-picker__new .button {
+    flex: 1 1 auto;
+  }
+
   /* Selectable rows (multi-select for exports) */
   .rowcard--selectable {
     display: flex;
@@ -1474,6 +1489,46 @@ select.input {
 }
 
 .export-panel__footer .button { flex: 1; min-height: 48px; }
+
+/* Transient action confirmation (e.g. "Approved") */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 1.5rem;
+  z-index: 200;
+  max-width: min(30rem, calc(100vw - 2rem));
+  padding: 0.7rem 1.1rem;
+  border-radius: 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-lg);
+  animation: toast-in 0.2s ease;
+}
+
+.toast--success {
+  background: var(--color-success);
+  color: #fff;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* Sit above the mobile tab bar */
+@media (max-width: 900px) {
+  .toast {
+    bottom: calc(var(--tabbar-height) + 1rem);
+  }
+}
 
 @media (max-width: 640px) {
   .export-backdrop {

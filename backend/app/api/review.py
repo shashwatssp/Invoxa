@@ -10,10 +10,13 @@ from pydantic import BaseModel
 
 from app.auth.dependencies import get_current_user
 from app.database import (
+    get_review_item_invoice_id,
     get_review_item_owner,
     get_review_queue,
     resolve_review_item,
+    update_invoice_status,
 )
+from app.models.invoice import InvoiceStatus
 from app.review.corrections import apply_correction_to_invoice, log_correction
 
 router = APIRouter(prefix="/api")
@@ -26,6 +29,21 @@ def _assert_same_account(review_id: str, user: dict) -> None:
         return  # legacy row without an owner
     if owner != user["id"]:
         raise HTTPException(status_code=403, detail="Not your invoice")
+
+
+def _sync_invoice_status(review_id: str, approved: bool) -> None:
+    """Keep the invoice row in sync with the review decision.
+
+    Approved -> the invoice is 'reviewed' everywhere (dashboard, digest,
+    exports). Rejected -> it stays 'flagged' so it keeps asking for
+    attention on the dashboard.
+    """
+    invoice_id = get_review_item_invoice_id(review_id)
+    if invoice_id:
+        update_invoice_status(
+            invoice_id,
+            InvoiceStatus.REVIEWED if approved else InvoiceStatus.FLAGGED,
+        )
 
 
 @router.get("/review/queue")
@@ -43,6 +61,7 @@ async def resolve_review(review_id: str, approved: bool, user=Depends(get_curren
     """
     _assert_same_account(review_id, user)
     resolve_review_item(review_id, approved, reviewed_by=user["id"])
+    _sync_invoice_status(review_id, approved)
     return {"status": "resolved", "approved": approved}
 
 
@@ -68,6 +87,7 @@ async def correct_and_resolve(
         )
         apply_correction_to_invoice(correction)
         resolve_review_item(review_id, approved=True, reviewed_by=user["id"])
+        _sync_invoice_status(review_id, approved=True)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
