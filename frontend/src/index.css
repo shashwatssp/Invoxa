@@ -551,11 +551,33 @@ select.input {
   font-weight: 600;
   color: var(--color-success);
   margin-top: 0.15rem;
+  overflow-wrap: anywhere; /* long folder names wrap, never overlap */
 }
 
 .upload-item__folder--pending {
   color: var(--color-muted);
   font-weight: 500;
+}
+
+/* Phones: two-row card - details on top, status + badges + actions
+   underneath - so nothing squeezes or overlaps on a narrow screen. */
+@media (max-width: 640px) {
+  .upload-item {
+    flex-wrap: wrap;
+    row-gap: 0.55rem;
+  }
+
+  .upload-item__main {
+    flex: 1 0 100%;
+  }
+
+  .upload-item .badge {
+    flex: 0 0 auto;
+  }
+
+  .upload-item .button {
+    margin-left: auto; /* View sits at the right end of the action row */
+  }
 }
 
 /* AI narrative at the top of the weekly digest */
