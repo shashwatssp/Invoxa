@@ -22,8 +22,19 @@ interface DigestPayload {
   flagged_for_review?: number;
   total_amount?: number;
   summary_lines?: string[];
+  narrative?: string | null;
+  narrative_source?: string;
   [k: string]: unknown;
 }
+
+/** Status filter options mirroring the backend InvoiceStatus enum. */
+const STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'flagged', label: 'Needs review' },
+  { value: 'auto_approved', label: 'Auto-approved' },
+  { value: 'reviewed', label: 'Reviewed' },
+  { value: 'exported', label: 'Exported' },
+];
 
 function Stat({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
   return (
@@ -45,13 +56,32 @@ export function Dashboard() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [exportOpen, setExportOpen] = useState(false);
 
+  // List filters: free-text search (debounced), status, upload-date range.
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  // Debounce the search box so typing does not spam the API.
+  useEffect(() => {
+    const t = window.setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       setError(null);
       try {
         const [invoiceList, folderList, digestPayload] = await Promise.all([
-          fetchInvoices(folderScope === 'all' ? null : folderScope),
+          fetchInvoices(folderScope === 'all' ? null : folderScope, {
+            search: search || null,
+            status: statusFilter || null,
+            from: fromDate || null,
+            to: toDate || null,
+          }),
           fetchFolders(),
           fetchDigest(7),
         ]);
@@ -68,10 +98,21 @@ export function Dashboard() {
         setError(friendlyError(err, 'Failed to load the dashboard.'));
       } finally {
         setLoading(false);
+        setHasLoaded(true);
       }
     };
     void load();
-  }, [folderScope]);
+  }, [folderScope, search, statusFilter, fromDate, toDate]);
+
+  const hasActiveFilters = Boolean(search || statusFilter || fromDate || toDate);
+
+  const clearFilters = () => {
+    setSearchInput('');
+    setSearch('');
+    setStatusFilter('');
+    setFromDate('');
+    setToDate('');
+  };
 
   const stats = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -164,13 +205,14 @@ export function Dashboard() {
         </div>
       )}
 
-      {loading ? (
+      {loading && !hasLoaded ? (
         <div className="card">
           <div className="skeleton skeleton-line skeleton-line--w40" />
           <div className="skeleton skeleton-line skeleton-line--w60" />
           <div className="skeleton skeleton-line" />
         </div>
       ) : (
+        <div style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
         <>
           <div className="stat-grid">
             <Stat label="Total invoices" value={invoices.length} tone="primary" />
@@ -186,6 +228,14 @@ export function Dashboard() {
                 <span className="badge badge--primary">Last {digest.window_days ?? 7} days</span>
               )}
             </div>
+            {digest?.narrative && (
+              <p className="digest-narrative">
+                {digest.narrative}
+                {digest.narrative_source === 'gemini' && (
+                  <span className="badge badge--primary digest-narrative__badge">AI</span>
+                )}
+              </p>
+            )}
             {digest && Array.isArray(digest.summary_lines) && digest.summary_lines.length > 0 ? (
               <ul className="digest-lines">
                 {digest.summary_lines.map((line, index) => (
@@ -205,11 +255,57 @@ export function Dashboard() {
                 {selected.size > 0 && ` · ${selected.size} selected`}
               </span>
             </div>
+            <div className="filter-bar" role="search" aria-label="Filter invoices">
+              <input
+                type="search"
+                className="input filter-bar__search"
+                placeholder="Search invoice # or vendor"
+                aria-label="Search invoice number or vendor"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+              />
+              <select
+                className="input filter-bar__status"
+                aria-label="Filter by status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="">All statuses</option>
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              <input
+                type="date"
+                className="input filter-bar__date"
+                aria-label="Uploaded from"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+              />
+              <input
+                type="date"
+                className="input filter-bar__date"
+                aria-label="Uploaded to"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+              />
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  className="button button--secondary button--small filter-bar__clear"
+                  onClick={clearFilters}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
             {invoices.length === 0 ? (
               <p className="table-empty">
-                {folderScope === 'all'
-                  ? 'No invoices yet. Upload one to get started.'
-                  : 'No invoices in this folder yet.'}
+                {hasActiveFilters
+                  ? 'No invoices match your filters.'
+                  : folderScope === 'all'
+                    ? 'No invoices yet. Upload one to get started.'
+                    : 'No invoices in this folder yet.'}
               </p>
             ) : (
               <>
@@ -227,6 +323,7 @@ export function Dashboard() {
                           />
                         </th>
                         <th>Invoice #</th>
+                        <th>Vendor</th>
                         <th>Status</th>
                         <th>Amount</th>
                         <th>Due</th>
@@ -247,6 +344,7 @@ export function Dashboard() {
                           <td>
                             <Link to={`/app/invoices/${invoice.id}`}>{invoice.invoice_number ?? '(no number)'}</Link>
                           </td>
+                          <td>{invoice.vendor_name ?? '\u2014'}</td>
                           <td>
                             <span className={`badge badge--${statusTone(invoice.status)}`}>
                               {invoice.status.replace('_', ' ')}
@@ -279,7 +377,10 @@ export function Dashboard() {
                           </span>
                         </div>
                         <div className="rowcard__meta">
+                          <span>{invoice.vendor_name ?? '\u2014'}</span>
                           <span>{formatINR(invoice.amount)}</span>
+                        </div>
+                        <div className="rowcard__meta">
                           <span>Due {formatDate(invoice.due_date)}</span>
                         </div>
                         {folderName(invoice.folder_id) && (
@@ -293,6 +394,7 @@ export function Dashboard() {
             )}
           </section>
         </>
+        </div>
       )}
 
       <ExportDialog

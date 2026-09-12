@@ -123,7 +123,7 @@ A two-service deployment on Vercel, backed by Supabase:
 3. Evidence-weighted per-field confidence: GSTIN checksum validation, labeled vs. derived amounts, arithmetic consistency (subtotal + tax = total).
 4. Validation: GSTIN checksum, duplicate detection, line-item reconciliation, date sanity.
 5. Auto-approve at 80%+ overall confidence with no anomalies; otherwise queue for review with a human-readable reason.
-6. Gemini vision fallback for very-low-confidence documents when an API key is configured.
+6. Gemini vision fallback when an API key is configured: page images (or the uploaded photo itself for WhatsApp-style uploads) are rendered and sent alongside the text, so image-only scans and photos still extract. Any Gemini failure falls back gracefully to the regular flagged-for-review path.
 
 ### Export Center
 
@@ -139,6 +139,19 @@ Every export accepts the same optional scope: a **period** (last 7 or 14 days, t
 ### Folders
 
 Uploads can be filed into flat, per-account folders (per client, project, or shop) — chosen once per scanning batch, filtered with one tap on the dashboard, and used as an export scope. Deleting a folder never deletes invoices; they fall back to "No folder" at the database level.
+
+### Dashboard search & filters
+
+The invoice list can be narrowed with server-side filters, combinable with the folder chips: a free-text **search** (case-insensitive substring over invoice number and vendor name), a **status** filter (pending / needs review / auto-approved / reviewed / exported), and an upload-**date range**. Filters re-run the query without wiping the current view, and a Clear button resets them in one tap.
+
+### AI features
+
+Gemini (when `GEMINI_API_KEY` is configured) powers two assists, both strictly server-side and fully optional — every feature degrades to a deterministic non-AI path when the key is missing or the API fails:
+
+- **Vision fallback for scans and photos.** Image-only PDFs (scans) and photo uploads that produce no extractable text are rendered to bounded-size JPEG page images and sent to Gemini's vision model for extraction, instead of dead-ending as unreadable documents. Low-confidence text extractions also get page images attached for better accuracy.
+- **AI weekly digest narrative.** On top of the deterministic summary lines (counts, totals, top vendors, due soon), the digest can include a short 2–3 sentence plain-English narrative of the week's activity. It uses only the real numbers from your account — no invented figures — and is silently omitted whenever Gemini is unavailable.
+
+The API key never leaves the backend: it is read from `.env` server-side, never exposed to the frontend bundle or any API response.
 
 ## Developer quickstart
 
@@ -174,7 +187,7 @@ npm run dev      # http://localhost:5173, API proxied to :8000
 ### Tests
 
 ```bash
-cd backend && python -m pytest tests -q          # 170+ unit/integration tests
+cd backend && python -m pytest tests -q          # 200+ unit/integration tests
 python -m ruff check backend                     # lint
 cd frontend && npm run typecheck && npm run build
 ```
@@ -186,7 +199,7 @@ cd backend/test-assets
 INVOXA_BASE_URL=https://your-deployment.vercel.app python run_e2e.py
 ```
 
-Signs up two accounts, uploads every test PDF, asserts ground-truth fields, verifies per-account data isolation (invoices, folders, review queue, digest), ownership enforcement on receipts and previews, the review workflow (including approval syncing the invoice status to "reviewed"), duplicate detection, folder-scoped and period-filtered exports (CSV by id, PDF statement), and the digest.
+Signs up two accounts, uploads every test PDF, asserts ground-truth fields, verifies per-account data isolation (invoices, folders, review queue, digest), ownership enforcement on receipts and previews, the review workflow (including approval syncing the invoice status to "reviewed"), duplicate detection, folder-scoped and period-filtered exports (CSV by id, PDF statement), the invoice-list search/status/date filters, and the digest.
 
 ### Deployment
 

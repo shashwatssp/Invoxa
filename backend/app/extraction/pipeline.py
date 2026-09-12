@@ -160,6 +160,16 @@ def extract_from_invoice(file_bytes, invoice_id):
     text, _used_ocr = extract_text(file_bytes)
 
     if not text or not text.strip():
+        # Image-only scanned PDF (or OCR unavailable on the server).
+        # Try Gemini vision on the page images before giving up, so
+        # scans and photos still extract instead of dead-ending in review.
+        if GEMINI_FALLBACK_AVAILABLE:
+            gemini_result = gemini_fallback(file_bytes, "")
+            if gemini_result:
+                gemini_result.needs_review = (
+                    gemini_result.overall_confidence < CONFIDENCE_THRESHOLD
+                )
+                return gemini_result
         return ExtractionResult(
             needs_review=True,
             overall_confidence=0.0,

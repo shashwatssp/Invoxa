@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.database import get_invoices
+from app.digest.narrative import ai_narrative
 
 
 @dataclass
@@ -33,6 +34,10 @@ default_factory=lambda: datetime.now(UTC).replace(tzinfo=None).isoformat(timespe
     due_soon_days: int = 5
     due_soon: list[dict[str, Any]] = field(default_factory=list)
     summary_lines: list[str] = field(default_factory=list)
+    # AI-written narrative; None when Gemini is unavailable so the UI
+    # falls back to the deterministic summary_lines.
+    narrative: str | None = None
+    narrative_source: str = "template"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -171,4 +176,14 @@ def generate_digest(window_days: int = 7, user_id: str | None = None) -> Digest:
         summary_lines=[],
     )
     digest.summary_lines = _build_summary_lines(digest)
+
+    # Optional AI narrative: never fails the digest; when Gemini is
+    # unavailable the template lines above are the whole story.
+    try:
+        narrative = ai_narrative(digest.to_dict(), recent)
+    except Exception:  # narrative is a bonus, never a dependency
+        narrative = None
+    if narrative:
+        digest.narrative = narrative
+        digest.narrative_source = "gemini"
     return digest

@@ -88,6 +88,65 @@ def render_page_to_image(file_bytes: bytes, page_num: int = 0, dpi: int = 300) -
     return img
 
 
+def _image_magic_type(file_bytes: bytes) -> str | None:
+    """Return the MIME type when the bytes are a standalone image file."""
+    if file_bytes.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if file_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    return None
+
+
+def render_page_images(
+    file_bytes: bytes,
+    max_pages: int = 2,
+    dpi: int = 200,
+    max_dimension: int = 1600,
+) -> list[tuple[str, bytes]]:
+    """Render pages as JPEG images for vision APIs (e.g. Gemini).
+
+    Accepts either a PDF (renders up to ``max_pages`` pages) or a standalone
+    image file such as a WhatsApp photo (re-encoded to JPEG). Every image is
+    downscaled so its longest side is at most ``max_dimension``, keeping the
+    request payload bounded. Returns ``(mime_type, jpeg_bytes)`` tuples;
+    an empty list means nothing renderable (unreadable file, non-image).
+    """
+    image_type = _image_magic_type(file_bytes)
+    if image_type:
+        try:
+            img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+        except Exception:
+            return []
+        candidates = [img]
+    else:
+        try:
+            candidates = []
+            with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+                for page in doc:
+                    if len(candidates) >= max_pages:
+                        break
+                    mat = fitz.Matrix(dpi / 72, dpi / 72)
+                    pix = page.get_pixmap(matrix=mat)
+                    candidates.append(
+                        Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    )
+        except Exception:  # non-PDF or unreadable bytes
+            return []
+
+    rendered: list[tuple[str, bytes]] = []
+    for img in candidates[:max_pages]:
+        longest = max(img.size)
+        if longest > max_dimension:
+            scale = max_dimension / longest
+            img = img.resize(
+                (max(1, int(img.width * scale)), max(1, int(img.height * scale)))
+            )
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        rendered.append(("image/jpeg", buf.getvalue()))
+    return rendered
+
+
 def ocr_image(image: Image.Image, lang: str = "eng+hin") -> str:
     """
     Run Tesseract OCR on a PIL Image.

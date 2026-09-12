@@ -2,9 +2,10 @@
 Invoice API endpoints. All routes require a logged-in user.
 Reads and file access are scoped to the owning account.
 """
+import datetime as dt
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 
 from app.auth.dependencies import get_current_user
 from app.database import (
@@ -65,10 +66,29 @@ def _write_back_canonical_fields(invoice_id: str, result: ExtractionResult) -> N
 
 @router.get("/invoices")
 async def list_invoices(
-    folder_id: str | None = None, user=Depends(get_current_user)
+    folder_id: str | None = None,
+    status: str | None = Query(None),
+    date_from: dt.date | None = Query(None, alias="from"),
+    date_to: dt.date | None = Query(None, alias="to"),
+    search: str | None = Query(None, max_length=100),
+    user=Depends(get_current_user),
 ):
-    """List the account's invoices with status, optionally in one folder."""
-    return get_invoices(user["id"], folder_id=folder_id)
+    """List the account's invoices with optional filters.
+
+    All filters are optional and combinable: folder, status, upload-date
+    range (inclusive) and a case-insensitive search over invoice number
+    and vendor name.
+    """
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="'from' must be on or before 'to'.")
+    return get_invoices(
+        user["id"],
+        folder_id=folder_id,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+        search=search,
+    )
 
 
 @router.get("/invoices/{invoice_id}/file")

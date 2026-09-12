@@ -77,6 +77,7 @@ export interface HealthResponse {
 export interface InvoiceSummary {
   id: string;
   vendor_id: string | null;
+  vendor_name?: string | null;
   invoice_number: string | null;
   amount: number | null;
   due_date: string | null;
@@ -259,9 +260,24 @@ export async function previewExport(filters: ExportFilters = {}): Promise<Export
   return data;
 }
 
-export async function fetchInvoices(folderId?: string | null): Promise<InvoiceSummary[]> {
+/** Optional filters for the invoice list (search/status/date range). */
+export interface InvoiceFilters {
+  search?: string | null;
+  status?: string | null;
+  from?: string | null; // ISO date (yyyy-mm-dd)
+  to?: string | null; // ISO date (yyyy-mm-dd)
+}
+
+export async function fetchInvoices(
+  folderId?: string | null,
+  filters: InvoiceFilters = {},
+): Promise<InvoiceSummary[]> {
   const params = new URLSearchParams();
   if (folderId) params.set('folder_id', folderId);
+  if (filters.search) params.set('search', filters.search);
+  if (filters.status) params.set('status', filters.status);
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
   const qs = params.toString();
   const { data } = await api.get<InvoiceSummary[]>(`/api/invoices${qs ? `?${qs}` : ''}`);
   return data;

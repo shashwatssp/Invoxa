@@ -536,6 +536,43 @@ select.input {
 .upload-item__state--flagged { color: var(--color-warning); }
 .upload-item__state--error { color: var(--color-danger); }
 
+/* AI narrative at the top of the weekly digest */
+
+.digest-narrative {
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.85rem;
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-primary-soft);
+  border-radius: 0.5rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.digest-narrative__badge {
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+/* Invoice list filter bar (search + status + date range) */
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+.filter-bar .input {
+  width: auto;
+  flex: 1 1 9rem;
+  min-width: 8.5rem;
+}
+
+.filter-bar__search { flex: 2 1 14rem; }
+
+.filter-bar__clear { flex: 0 0 auto; }
+
 /* Digest lines */
 
 .digest-lines {

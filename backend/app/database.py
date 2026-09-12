@@ -17,14 +17,23 @@ def _db():
 # --- Invoices ---
 
 def get_invoices(
-    user_id: str | None = None, folder_id: str | None = None
+    user_id: str | None = None,
+    folder_id: str | None = None,
+    status: str | None = None,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+    search: str | None = None,
 ) -> list[dict]:
     """List invoices, scoped to the owning account when ``user_id`` is given.
 
     Each row carries a flattened ``vendor_name`` (from the vendors embed)
     so dashboards and exports can show a human-readable name.
-    ``folder_id`` optionally narrows the list to one folder (no filter
-    when omitted, so existing callers behave exactly as before).
+    Every filter is optional, so no params means "everything in the
+    account" (existing callers behave exactly as before):
+    ``folder_id`` narrows to one folder, ``status`` to one status,
+    ``date_from``/``date_to`` bound the upload date inclusively, and
+    ``search`` is a case-insensitive substring match on invoice number
+    or vendor name.
     """
     query = _db().table("invoices").select(
         "id, vendor_id, invoice_number, amount, due_date, status, storage_path, "
@@ -34,12 +43,38 @@ def get_invoices(
         query = query.eq("created_by", user_id)
     if folder_id:
         query = _apply_folder_filter(query, folder_id)
+    if status:
+        query = query.eq("status", status)
+    if date_from:
+        query = query.gte("created_at", f"{date_from.isoformat()}T00:00:00")
+    if date_to:
+        query = query.lte("created_at", f"{date_to.isoformat()}T23:59:59.999999")
     result = query.execute()
     rows = result.data or []
     for row in rows:
         embed = row.pop("vendors") or {}
         row["vendor_name"] = embed.get("name") if isinstance(embed, dict) else None
+    if search:
+        rows = _filter_by_search(rows, search)
     return rows
+
+
+def _filter_by_search(rows: list[dict], search: str) -> list[dict]:
+    """Case-insensitive substring match on invoice number or vendor name.
+
+    Applied in Python because the vendor name comes from an embedded
+    resource that the plain query builder cannot filter on portably.
+    """
+    needle = search.strip().lower()
+    if not needle:
+        return rows
+    matched: list[dict] = []
+    for row in rows:
+        invoice_number = (row.get("invoice_number") or "").lower()
+        vendor_name = (row.get("vendor_name") or "").lower()
+        if needle in invoice_number or needle in vendor_name:
+            matched.append(row)
+    return matched
 
 
 def _apply_folder_filter(query, folder_id: str):

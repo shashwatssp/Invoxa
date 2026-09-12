@@ -1,12 +1,20 @@
 """
 Gemini vision API fallback for low-confidence extractions.
-Only called when overall confidence drops below 0.3.
+
+Only called when overall confidence drops below 0.3 (or when text
+extraction produced nothing at all, e.g. image-only scanned PDFs).
+The request always carries the extracted text and, whenever pages can
+be rendered, also the page images so the model can read scans and
+photos of invoices directly.
 """
+import base64
+import contextlib
 import json
 
 import httpx
 
 from app.config import GEMINI_API_KEY, GEMINI_MODEL
+from app.extraction.ocr import render_page_images
 from app.models.invoice import ExtractionResult
 
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
@@ -15,10 +23,18 @@ GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMI
 def _build_prompt(text: str) -> str:
     """
     Build the Gemini prompt for invoice field extraction.
+
+    The wording adapts to what is attached: plain text, page images,
+    or both.
     """
+    source = (
+        "invoice text and the attached page images"
+        if text.strip()
+        else "the attached page images (a scan or photo of an invoice)"
+    )
     return f"""
 You are an expert Indian invoice data extraction assistant.
-Extract the following fields from this invoice text. Return ONLY valid JSON.
+Extract the following fields from this {source}. Return ONLY valid JSON.
 
 Fields to extract:
 - vendor_name: name of the seller/vendor
@@ -42,15 +58,38 @@ Invoice text:
 """
 
 
+def _image_parts(images: list[tuple[str, bytes]]) -> list[dict]:
+    """Encode rendered pages as Gemini ``inline_data`` parts."""
+    parts: list[dict] = []
+    for mime_type, image_bytes in images:
+        parts.append(
+            {
+                "inline_data": {
+                    "mime_type": mime_type,
+                    "data": base64.b64encode(image_bytes).decode("ascii"),
+                }
+            }
+        )
+    return parts
+
+
 def gemini_fallback(file_bytes: bytes, text: str) -> ExtractionResult | None:
     """
     Call Gemini vision API to extract invoice fields as fallback.
-    Returns ExtractionResult with confidence based on response quality.
+
+    Page images (rendered from the PDF, or the uploaded photo itself)
+    are attached whenever they can be produced, so scanned invoices
+    and WhatsApp photos extract correctly. Any API or parsing failure
+    returns None so the pipeline falls back to its previous result.
     """
     if not GEMINI_API_KEY:
         return None
 
     prompt = _build_prompt(text)
+    parts: list[dict] = [{"text": prompt}]
+    # Image rendering must never block the text path.
+    with contextlib.suppress(Exception):
+        parts.extend(_image_parts(render_page_images(file_bytes)))
 
     try:
         with httpx.Client(timeout=60) as client:
@@ -60,9 +99,7 @@ def gemini_fallback(file_bytes: bytes, text: str) -> ExtractionResult | None:
                 json={
                     "contents": [
                         {
-                            "parts": [
-                                {"text": prompt},
-                            ]
+                            "parts": parts,
                         }
                     ],
                     "generationConfig": {
