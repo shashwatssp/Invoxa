@@ -1,8 +1,9 @@
 """
 Unit tests for the CSV export module.
 
-Patches ``app.export.csv_export.get_invoices`` so the tests exercise the
-row mapping / formatting helpers without a live Supabase connection.
+Patches ``app.export.csv_export.fetch_export_rows`` (the database-layer
+query helper) so the tests exercise the row mapping / formatting helpers
+without a live Supabase connection.
 """
 
 import pytest
@@ -41,7 +42,13 @@ def sample_invoices(monkeypatch):
             "status": "pending",
         },
     ]
-    monkeypatch.setattr(csv_export, "get_invoices", lambda user_id=None: data)
+    def fake_fetch(user_id=None, status_filter=None, **kwargs):
+        return [
+            r for r in data
+            if not status_filter or (r.get("status") or "") == status_filter
+        ]
+
+    monkeypatch.setattr(csv_export, "fetch_export_rows", fake_fetch)
     return data
 
 
@@ -109,7 +116,7 @@ class TestBuildCsv:
         assert "INV-2026-002" in rows[0]
 
     def test_empty_when_no_rows(self, monkeypatch):
-        monkeypatch.setattr(csv_export, "get_invoices", lambda user_id=None: [])
+        monkeypatch.setattr(csv_export, "fetch_export_rows", lambda *a, **k: [])
         csv_text = csv_export.build_csv()
         # csv.DictWriter uses \r\n by default; compare line-normalized.
         assert csv_text.splitlines() == [",".join(CSV_HEADERS)]

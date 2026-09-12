@@ -3,6 +3,8 @@ Database access layer.
 Uses Supabase service key client for all operations.
 """
 
+import datetime as dt
+
 from app.models.invoice import Correction, ExtractionResult, InvoiceStatus
 from app.supabase import get_client
 
@@ -14,18 +16,70 @@ def _db():
 
 # --- Invoices ---
 
-def get_invoices(user_id: str | None = None) -> list[dict]:
+def get_invoices(
+    user_id: str | None = None, folder_id: str | None = None
+) -> list[dict]:
     """List invoices, scoped to the owning account when ``user_id`` is given.
 
     Each row carries a flattened ``vendor_name`` (from the vendors embed)
     so dashboards and exports can show a human-readable name.
+    ``folder_id`` optionally narrows the list to one folder (no filter
+    when omitted, so existing callers behave exactly as before).
     """
     query = _db().table("invoices").select(
         "id, vendor_id, invoice_number, amount, due_date, status, storage_path, "
-        "created_at, created_by, vendors(name)"
+        "created_at, created_by, folder_id, vendors(name)"
     ).order("created_at", desc=True)
     if user_id:
         query = query.eq("created_by", user_id)
+    if folder_id:
+        query = _apply_folder_filter(query, folder_id)
+    result = query.execute()
+    rows = result.data or []
+    for row in rows:
+        embed = row.pop("vendors") or {}
+        row["vendor_name"] = embed.get("name") if isinstance(embed, dict) else None
+    return rows
+
+
+def _apply_folder_filter(query, folder_id: str):
+    """Filter by folder; the sentinel value ``none`` means 'unfiled only'."""
+    if folder_id == "none":
+        return query.is_("folder_id", "null")
+    return query.eq("folder_id", folder_id)
+
+
+def fetch_export_rows(
+    user_id: str | None = None,
+    status_filter: str | None = None,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+    folder_id: str | None = None,
+    ids: list[str] | None = None,
+) -> list[dict]:
+    """Single source of truth for export/digest row fetching.
+
+    Always scoped to the owning account when ``user_id`` is given; every
+    filter is optional, so no params means "everything in the account"
+    (exactly what the original exports did).
+    Date bounds are inclusive and filter on upload date (``created_at``).
+    """
+    query = _db().table("invoices").select(
+        "id, vendor_id, invoice_number, amount, due_date, status, storage_path, "
+        "created_at, created_by, folder_id, vendors(name)"
+    ).order("created_at", desc=True)
+    if user_id:
+        query = query.eq("created_by", user_id)
+    if status_filter:
+        query = query.eq("status", status_filter)
+    if date_from:
+        query = query.gte("created_at", f"{date_from.isoformat()}T00:00:00")
+    if date_to:
+        query = query.lte("created_at", f"{date_to.isoformat()}T23:59:59.999999")
+    if folder_id:
+        query = _apply_folder_filter(query, folder_id)
+    if ids:
+        query = query.in_("id", ids)
     result = query.execute()
     rows = result.data or []
     for row in rows:
@@ -68,14 +122,18 @@ def create_invoice(
     storage_path: str,
     vendor_id: str | None = None,
     created_by: str | None = None,
+    folder_id: str | None = None,
 ) -> str:
     """Create a new invoice record. Returns the invoice ID."""
-    result = _db().table("invoices").insert({
+    fields = {
         "storage_path": storage_path,
         "vendor_id": vendor_id,
         "created_by": created_by,
         "status": "pending",
-    }).execute()
+    }
+    if folder_id:
+        fields["folder_id"] = folder_id
+    result = _db().table("invoices").insert(fields).execute()
     return result.data[0]["id"]
 
 
@@ -137,6 +195,63 @@ def get_or_create_vendor(gstin: str | None = None, name: str | None = None) -> s
         vendor_data["name"] = name
     result = _db().table("vendors").insert(vendor_data).execute()
     return result.data[0]["id"]
+
+
+# --- Folders ---
+
+def list_folders(owner_id: str) -> list[dict]:
+    """List the account's folders (id, name, created_at), oldest first."""
+    result = _db().table("folders").select(
+        "id, name, created_at"
+    ).eq("owner_id", owner_id).order("created_at", desc=False).execute()
+    return result.data or []
+
+
+def get_folder(folder_id: str, owner_id: str) -> dict | None:
+    """Return the folder when it exists AND belongs to this account."""
+    result = _db().table("folders").select(
+        "id, name, created_at"
+    ).eq("id", folder_id).eq("owner_id", owner_id).limit(1).execute()
+    return result.data[0] if result.data else None
+
+
+def create_folder(owner_id: str, name: str) -> dict:
+    """Create a folder for this account and return it."""
+    result = _db().table("folders").insert({
+        "owner_id": owner_id,
+        "name": name,
+    }).execute()
+    return result.data[0]
+
+
+def rename_folder(folder_id: str, owner_id: str, name: str) -> dict | None:
+    """Rename a folder in the owning account; None when not found/owned."""
+    result = _db().table("folders").update({"name": name}).eq(
+        "id", folder_id
+    ).eq("owner_id", owner_id).execute()
+    return result.data[0] if result.data else None
+
+
+def delete_folder(folder_id: str, owner_id: str) -> bool:
+    """Delete a folder from the owning account. Invoices survive with
+    folder_id set NULL by the database (ON DELETE SET NULL)."""
+    result = _db().table("folders").delete().eq(
+        "id", folder_id
+    ).eq("owner_id", owner_id).execute()
+    return bool(result.data)
+
+
+def folder_invoice_counts(owner_id: str) -> dict[str, int]:
+    """Count invoices per folder for this account, in one query."""
+    result = _db().table("invoices").select(
+        "folder_id"
+    ).eq("created_by", owner_id).execute()
+    counts: dict[str, int] = {}
+    for row in result.data or []:
+        fid = row.get("folder_id")
+        if fid:
+            counts[fid] = counts.get(fid, 0) + 1
+    return counts
 
 
 # --- Users ---

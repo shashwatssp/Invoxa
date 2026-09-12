@@ -13,11 +13,12 @@ endpoints in ``app.api.export`` call into these helpers.
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import io
 from datetime import datetime
 from typing import Any
 
-from app.database import get_invoices
+from app.database import fetch_export_rows
 
 # Tally / Zoho-compatible column order.  Each row is written in this
 # order so downstream accounting software can map fields predictably.
@@ -83,18 +84,18 @@ def _row_for(invoice: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def fetch_export_rows(
-    status_filter: str | None = None, user_id: str | None = None
-) -> list[dict[str, Any]]:
-    """Read invoice rows from Supabase, scoped to one account."""
-    rows = get_invoices(user_id)
-    if status_filter:
-        rows = [r for r in rows if (r.get("status") or "") == status_filter]
-    return [_row_for(r) for r in rows]
+def build_csv(
+    status_filter: str | None = None,
+    user_id: str | None = None,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+    folder_id: str | None = None,
+    ids: list[str] | None = None,
+) -> str:
+    """Render the full CSV body as a string, scoped to one account.
 
-
-def build_csv(status_filter: str | None = None, user_id: str | None = None) -> str:
-    """Render the full CSV body as a string, scoped to one account."""
+    All filters are optional; omitted filters broaden the result.
+    """
     output = io.StringIO()
     writer = csv.DictWriter(
         output,
@@ -103,13 +104,34 @@ def build_csv(status_filter: str | None = None, user_id: str | None = None) -> s
         lineterminator="\n",  # consistent across platforms
     )
     writer.writeheader()
-    for row in fetch_export_rows(status_filter=status_filter, user_id=user_id):
-        writer.writerow(row)
+    rows = fetch_export_rows(
+        user_id,
+        status_filter=status_filter,
+        date_from=date_from,
+        date_to=date_to,
+        folder_id=folder_id,
+        ids=ids,
+    )
+    for invoice in rows:
+        writer.writerow(_row_for(invoice))
     return output.getvalue()
 
 
 def preview_csv_rows(
-    status_filter: str | None = None, user_id: str | None = None
+    status_filter: str | None = None,
+    user_id: str | None = None,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+    folder_id: str | None = None,
+    ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Return the rows that ``build_csv`` would emit, as plain dicts."""
-    return fetch_export_rows(status_filter=status_filter, user_id=user_id)
+    output = build_csv(
+        status_filter=status_filter,
+        user_id=user_id,
+        date_from=date_from,
+        date_to=date_to,
+        folder_id=folder_id,
+        ids=ids,
+    )
+    return list(csv.DictReader(io.StringIO(output)))

@@ -5,12 +5,13 @@ format mirrors the CSV columns and is generated in-memory with openpyxl.
 """
 from __future__ import annotations
 
+import datetime as dt
 import io
 from typing import Any
 
 from openpyxl import Workbook
 
-from app.database import get_invoices
+from app.database import fetch_export_rows
 from app.export.csv_export import CSV_HEADERS, _format_date, _safe_amount
 
 
@@ -31,11 +32,23 @@ def _cell_value(header: str, invoice: dict[str, Any]) -> Any:
     return mapping[header]
 
 
-def build_xlsx(status_filter: str | None = None, user_id: str | None = None) -> bytes:
+def build_xlsx(
+    status_filter: str | None = None,
+    user_id: str | None = None,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+    folder_id: str | None = None,
+    ids: list[str] | None = None,
+) -> bytes:
     """Render the invoice rows as an XLSX workbook, scoped to one account."""
-    rows = get_invoices(user_id)
-    if status_filter:
-        rows = [r for r in rows if (r.get("status") or "") == status_filter]
+    rows = fetch_export_rows(
+        user_id,
+        status_filter=status_filter,
+        date_from=date_from,
+        date_to=date_to,
+        folder_id=folder_id,
+        ids=ids,
+    )
 
     workbook = Workbook()
     sheet = workbook.active

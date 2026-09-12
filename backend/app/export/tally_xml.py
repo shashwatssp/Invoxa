@@ -11,11 +11,12 @@ Ledger convention (Tally's signed-amount model, debit positive):
 """
 from __future__ import annotations
 
+import datetime as dt
 from datetime import datetime
 from typing import Any
 from xml.sax.saxutils import escape
 
-from app.database import get_invoices
+from app.database import fetch_export_rows
 
 TALLY_COMPANY_PLACEHOLDER = "Invoxa Company"
 
@@ -86,12 +87,22 @@ def _voucher_for(invoice: dict[str, Any]) -> str:
 
 
 def build_tally_xml(
-    status_filter: str | None = None, user_id: str | None = None
+    status_filter: str | None = None,
+    user_id: str | None = None,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+    folder_id: str | None = None,
+    ids: list[str] | None = None,
 ) -> str:
     """Render the full Tally import XML, scoped to one account."""
-    rows = get_invoices(user_id)
-    if status_filter:
-        rows = [r for r in rows if (r.get("status") or "") == status_filter]
+    rows = fetch_export_rows(
+        user_id,
+        status_filter=status_filter,
+        date_from=date_from,
+        date_to=date_to,
+        folder_id=folder_id,
+        ids=ids,
+    )
 
     vouchers = "\n".join(_voucher_for(row) for row in rows)
     return f"""<ENVELOPE>

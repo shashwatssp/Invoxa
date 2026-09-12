@@ -4,12 +4,13 @@ Reads and file access are scoped to the owning account.
 """
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 
 from app.auth.dependencies import get_current_user
 from app.database import (
     add_to_review_queue,
     create_invoice,
+    get_folder,
     get_invoice,
     get_invoices,
     get_or_create_vendor,
@@ -63,9 +64,11 @@ def _write_back_canonical_fields(invoice_id: str, result: ExtractionResult) -> N
 
 
 @router.get("/invoices")
-async def list_invoices(user=Depends(get_current_user)):
-    """List the account's invoices with status."""
-    return get_invoices(user["id"])
+async def list_invoices(
+    folder_id: str | None = None, user=Depends(get_current_user)
+):
+    """List the account's invoices with status, optionally in one folder."""
+    return get_invoices(user["id"], folder_id=folder_id)
 
 
 @router.get("/invoices/{invoice_id}/file")
@@ -122,13 +125,21 @@ async def invoice_detail(invoice_id: str, user=Depends(get_current_user)):
 
 
 @router.post("/invoices/upload")
-async def upload_and_register(file: UploadFile = File(...), user=Depends(get_current_user)):
+async def upload_and_register(
+    file: UploadFile = File(...),
+    folder_id: str | None = Form(None),
+    user=Depends(get_current_user),
+):
     """
     Upload an invoice file directly to Supabase Storage,
     create an invoice record, and trigger extraction.
+    Optionally files the invoice into one of the account's folders.
     """
     file_bytes = await file.read()
     file_name = file.filename or "invoice.pdf"
+
+    if folder_id and not get_folder(folder_id, user["id"]):
+        raise HTTPException(status_code=404, detail="Folder not found")
 
     # Upload to Supabase Storage
     try:
@@ -137,7 +148,7 @@ async def upload_and_register(file: UploadFile = File(...), user=Depends(get_cur
         raise HTTPException(status_code=502, detail=f"Storage upload failed: {e}") from e
 
     # Create invoice record, stamped with the uploader
-    invoice_id = create_invoice(storage_path, created_by=user["id"])
+    invoice_id = create_invoice(storage_path, created_by=user["id"], folder_id=folder_id)
 
     # Trigger extraction
     result: ExtractionResult = extract_from_invoice(file_bytes, invoice_id)

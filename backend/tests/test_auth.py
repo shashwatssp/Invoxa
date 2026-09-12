@@ -149,7 +149,7 @@ def test_invoices_require_auth(users):
 
 def test_invoices_list_with_token(users, monkeypatch):
     import app.api.invoices as inv_api
-    monkeypatch.setattr(inv_api, "get_invoices", lambda user_id=None: [])
+    monkeypatch.setattr(inv_api, "get_invoices", lambda user_id=None, folder_id=None: [])
     signup = _signup().json()
     res = client.get(
         "/api/invoices", headers={"Authorization": f"Bearer {signup['token']}"}
@@ -163,7 +163,7 @@ def test_upload_stamps_created_by(users, monkeypatch):
 
     captured = {}
 
-    def fake_create_invoice(storage_path, vendor_id=None, created_by=None):
+    def fake_create_invoice(storage_path, vendor_id=None, created_by=None, folder_id=None):
         captured["created_by"] = created_by
         return "inv-123"
 

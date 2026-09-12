@@ -83,6 +83,32 @@ export interface InvoiceSummary {
   status: string;
   storage_path: string;
   created_at: string;
+  folder_id: string | null;
+}
+
+export interface FolderInfo {
+  id: string;
+  name: string;
+  invoice_count: number;
+  created_at: string;
+}
+
+export async function fetchFolders(): Promise<FolderInfo[]> {
+  const { data } = await api.get<FolderInfo[]>('/api/folders');
+  return data;
+}
+
+export async function createFolder(name: string): Promise<{ id: string; name: string }> {
+  const { data } = await api.post('/api/folders', { name });
+  return data;
+}
+
+export async function renameFolder(folderId: string, name: string): Promise<void> {
+  await api.patch(`/api/folders/${folderId}`, { name });
+}
+
+export async function deleteFolder(folderId: string): Promise<void> {
+  await api.delete(`/api/folders/${folderId}`);
 }
 
 export interface ExtractionField {
@@ -170,6 +196,26 @@ export async function fetchInvoicePreview(invoiceId: string): Promise<Blob> {
   return data;
 }
 
+/** Optional filters shared by every export endpoint. */
+export interface ExportFilters {
+  status?: string | null;
+  from?: string | null; // ISO date (yyyy-mm-dd)
+  to?: string | null; // ISO date (yyyy-mm-dd)
+  folderId?: string | null;
+  ids?: string[] | null;
+}
+
+function exportQuery(filters: ExportFilters): string {
+  const params = new URLSearchParams();
+  if (filters.status) params.set('status', filters.status);
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
+  if (filters.folderId) params.set('folder_id', filters.folderId);
+  if (filters.ids?.length) params.set('ids', filters.ids.join(','));
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
 /** Download a generated file blob and trigger a browser save. */
 async function downloadBlob(path: string, filename: string): Promise<void> {
   const { data } = await api.get<Blob>(path, { responseType: 'blob' });
@@ -181,23 +227,43 @@ async function downloadBlob(path: string, filename: string): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
-/** Download the approved-invoices CSV via authenticated blob (no URL leaks). */
-export async function downloadCsv(status?: string): Promise<void> {
-  await downloadBlob('/api/export/csv', `invoxa_export_${status || 'all'}.csv`);
+/** Download the CSV export via authenticated blob (no URL leaks). */
+export async function downloadCsv(filters: ExportFilters = {}): Promise<void> {
+  await downloadBlob(`/api/export/csv${exportQuery(filters)}`, 'invoxa_export.csv');
 }
 
 /** Download the export as Excel (XLSX) for Zoho Books / Excel import. */
-export async function downloadXlsx(status?: string): Promise<void> {
-  await downloadBlob('/api/export/xlsx', `invoxa_export_${status || 'all'}.xlsx`);
+export async function downloadXlsx(filters: ExportFilters = {}): Promise<void> {
+  await downloadBlob(`/api/export/xlsx${exportQuery(filters)}`, 'invoxa_export.xlsx');
 }
 
 /** Download a Tally Prime XML voucher import file. */
-export async function downloadTallyXml(status?: string): Promise<void> {
-  await downloadBlob('/api/export/tally-xml', `invoxa_tally_${status || 'all'}.xml`);
+export async function downloadTallyXml(filters: ExportFilters = {}): Promise<void> {
+  await downloadBlob(`/api/export/tally-xml${exportQuery(filters)}`, 'invoxa_tally.xml');
 }
 
-export async function fetchInvoices(): Promise<InvoiceSummary[]> {
-  const { data } = await api.get<InvoiceSummary[]>('/api/invoices');
+/** Download a printable A4 statement PDF. */
+export async function downloadStatementPdf(filters: ExportFilters = {}): Promise<void> {
+  await downloadBlob(`/api/export/pdf${exportQuery(filters)}`, 'invoxa_statement.pdf');
+}
+
+export interface ExportPreview {
+  rows: Record<string, string>[];
+  count: number;
+  total: number;
+}
+
+/** Ask the backend what an export with these filters would contain. */
+export async function previewExport(filters: ExportFilters = {}): Promise<ExportPreview> {
+  const { data } = await api.get<ExportPreview>(`/api/export/preview${exportQuery(filters)}`);
+  return data;
+}
+
+export async function fetchInvoices(folderId?: string | null): Promise<InvoiceSummary[]> {
+  const params = new URLSearchParams();
+  if (folderId) params.set('folder_id', folderId);
+  const qs = params.toString();
+  const { data } = await api.get<InvoiceSummary[]>(`/api/invoices${qs ? `?${qs}` : ''}`);
   return data;
 }
 
@@ -206,9 +272,10 @@ export async function fetchInvoice(id: string): Promise<InvoiceDetail> {
   return data;
 }
 
-export async function uploadInvoice(file: File): Promise<UploadResponse> {
+export async function uploadInvoice(file: File, folderId?: string | null): Promise<UploadResponse> {
   const form = new FormData();
   form.append('file', file, file.name);
+  if (folderId) form.append('folder_id', folderId);
   const { data } = await api.post<UploadResponse>('/api/invoices/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });

@@ -8,6 +8,7 @@ from postgrest.exceptions import APIError as PostgrestAPIError
 from app.api.auth import router as auth_router
 from app.api.digest import router as digest_router
 from app.api.export import router as export_router
+from app.api.folders import router as folders_router
 from app.api.invoices import router as invoices_router
 from app.api.review import router as review_router
 from app.supabase import close_client
@@ -41,6 +42,7 @@ app.add_middleware(
 
 # Include API routers (auth first; the rest are protected via dependencies)
 app.include_router(auth_router)
+app.include_router(folders_router)
 app.include_router(invoices_router)
 app.include_router(review_router)
 app.include_router(export_router)

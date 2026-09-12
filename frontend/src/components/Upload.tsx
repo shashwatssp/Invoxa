@@ -1,6 +1,13 @@
-import { useCallback, useRef, useState, type DragEvent, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type DragEvent, type ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { friendlyError, uploadInvoice, type ExtractedFields } from '@/lib/api';
+import {
+  createFolder,
+  fetchFolders,
+  friendlyError,
+  uploadInvoice,
+  type ExtractedFields,
+  type FolderInfo,
+} from '@/lib/api';
 import { formatINR } from '@/lib/format';
 
 type FilePhase = 'queued' | 'uploading' | 'done' | 'flagged' | 'error';
@@ -32,6 +39,41 @@ export function Upload() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [active, setActive] = useState(false);
   const [items, setItems] = useState<UploadItem[]>([]);
+  const [folders, setFolders] = useState<FolderInfo[]>([]);
+  const [folderId, setFolderId] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [folderError, setFolderError] = useState<string | null>(null);
+
+  const loadFolders = useCallback(async () => {
+    try {
+      setFolders(await fetchFolders());
+    } catch {
+      // Folder list is optional sugar; uploads work without it.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadFolders();
+  }, [loadFolders]);
+
+  const onCreateFolder = useCallback(async () => {
+    const name = newFolderName.trim();
+    if (!name) return;
+    setFolderError(null);
+    try {
+      const folder = await createFolder(name);
+      setFolders((current) => [
+        ...current,
+        { ...folder, invoice_count: 0, created_at: new Date().toISOString() },
+      ]);
+      setFolderId(folder.id);
+      setNewFolderName('');
+      setShowNewFolder(false);
+    } catch (err) {
+      setFolderError(friendlyError(err, 'Could not create the folder.'));
+    }
+  }, [newFolderName]);
 
   const patch = useCallback((key: string, changes: Partial<UploadItem>) => {
     setItems((current) => current.map((it) => (it.key === key ? { ...it, ...changes } : it)));
@@ -53,7 +95,7 @@ export function Upload() {
       for (const item of queued) {
         patch(item.key, { phase: 'uploading' });
         try {
-          const data = await uploadInvoice(item.file);
+          const data = await uploadInvoice(item.file, folderId);
           patch(item.key, {
             phase: data.extraction?.needs_review ? 'flagged' : 'done',
             invoiceId: data.id,
@@ -167,6 +209,64 @@ export function Upload() {
             })}
           </div>
         )}
+        <div className="folder-picker">
+          <label className="folder-picker__label" htmlFor="upload-folder">
+            Folder
+          </label>
+          <select
+            id="upload-folder"
+            className="input"
+            value={folderId ?? ''}
+            onChange={(e) => setFolderId(e.target.value || null)}
+          >
+            <option value="">No folder</option>
+            {folders.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name} ({f.invoice_count})
+              </option>
+            ))}
+          </select>
+          {showNewFolder ? (
+            <span className="folder-picker__new">
+              <input
+                className="input"
+                placeholder="Folder name"
+                value={newFolderName}
+                maxLength={60}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void onCreateFolder();
+                  }
+                }}
+                autoFocus
+              />
+              <button type="button" className="button button--secondary" onClick={() => void onCreateFolder()}>
+                Create
+              </button>
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => {
+                  setShowNewFolder(false);
+                  setNewFolderName('');
+                }}
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="linklike"
+              onClick={() => setShowNewFolder(true)}
+            >
+              + New folder
+            </button>
+          )}
+        </div>
+        {folderError && <div className="error-banner">{folderError}</div>}
       </section>
     </div>
   );
