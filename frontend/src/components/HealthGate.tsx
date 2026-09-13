@@ -42,7 +42,7 @@ export function HealthGate({ children, timeoutMs }: HealthGateProps) {
           return;
         }
         throw new Error('Unhealthy response');
-      } catch (err) {
+      } catch {
         if (cancelled) return;
         const elapsed = Date.now() - startedAt;
         if (elapsed >= effectiveTimeout) {

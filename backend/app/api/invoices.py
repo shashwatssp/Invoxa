@@ -3,7 +3,9 @@ Invoice API endpoints. All routes require a logged-in user.
 Reads and file access are scoped to the owning account.
 """
 import datetime as dt
+import logging
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel
@@ -28,10 +30,26 @@ from app.database import (
 )
 from app.extraction.pipeline import extract_from_invoice
 from app.models.invoice import Correction, ExtractionResult, InvoiceStatus
+from app.ratelimit import check_rate_limit
 from app.review.corrections import edit_invoice_field, normalize_value
 from app.supabase import delete_invoice_file, download_invoice, upload_invoice
 
 router = APIRouter(prefix="/api")
+
+logger = logging.getLogger(__name__)
+
+# Receipt uploads must be PDFs or images — anything else is either a
+# mistake or an abuse attempt and never reaches OCR or Storage.
+_ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
+_ALLOWED_MIME_TYPES = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+}
+# Generic MIME types some clients (PWA share-target, OS file pickers)
+# send instead of the real type — the extension is authoritative then.
+_GENERIC_MIME_TYPES = {"application/octet-stream", "application/download"}
 
 
 def _load_owned_invoice(invoice_id: str, user: dict) -> dict:
@@ -42,6 +60,24 @@ def _load_owned_invoice(invoice_id: str, user: dict) -> dict:
     if invoice.get("created_by") and invoice["created_by"] != user["id"]:
         raise HTTPException(status_code=403, detail="Not your invoice")
     return invoice
+
+
+def _validate_upload_type(file: UploadFile) -> str:
+    """Reject non-PDF/non-image uploads before any bytes are processed."""
+    file_name = file.filename or ""
+    extension = Path(file_name).suffix.lower()
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if extension not in _ALLOWED_EXTENSIONS or (
+        content_type
+        and content_type not in _ALLOWED_MIME_TYPES
+        and content_type not in _GENERIC_MIME_TYPES
+    ):
+        logger.warning("Upload rejected: name=%r content_type=%r", file_name, content_type)
+        raise HTTPException(
+            status_code=422,
+            detail="Unsupported file type. Upload a PDF or an image (PNG, JPG, WebP).",
+        )
+    return file_name or "invoice.pdf"
 
 
 def _iso_date(value: str | None) -> str | None:
@@ -174,8 +210,10 @@ async def upload_and_register(
     create an invoice record, and trigger extraction.
     Optionally files the invoice into one of the account's folders.
     """
+    file_name = _validate_upload_type(file)
+    check_rate_limit("upload", user["id"])
+
     file_bytes = await file.read()
-    file_name = file.filename or "invoice.pdf"
 
     if folder_id and not get_folder(folder_id, user["id"]):
         raise HTTPException(status_code=404, detail="Folder not found")
@@ -339,6 +377,8 @@ async def run_extraction(invoice_id: str, user=Depends(get_current_user)):
     invoice = get_invoice(invoice_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+
+    check_rate_limit("extract", user["id"])
 
     try:
         file_bytes = download_invoice(invoice["storage_path"])

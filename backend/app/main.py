@@ -14,7 +14,10 @@ from app.api.invoices import router as invoices_router
 from app.api.reports import router as reports_router
 from app.api.review import router as review_router
 from app.api.vendors import router as vendors_router
+from app.logging_setup import configure_logging
 from app.supabase import close_client
+
+configure_logging()
 
 
 @asynccontextmanager

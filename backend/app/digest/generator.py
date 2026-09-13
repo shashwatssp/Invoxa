@@ -11,20 +11,28 @@ API contract: ``GET /api/digest?days=N`` -> JSON dict (see ``to_dict``).
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.database import get_invoices
 from app.digest.narrative import ai_narrative
+
+# Invoxa is India-only: "week" and "due" boundaries must follow IST even
+# though the Vercel serverless runtime runs on UTC. IST (UTC+05:30) has
+# no DST, so a fixed offset is exact and needs no timezone database.
+IST = timezone(timedelta(hours=5, minutes=30), name="IST")
+
+
+def _ist_now() -> datetime:
+    """Naive current time in IST (matches the naive datetimes we parse)."""
+    return datetime.now(IST).replace(tzinfo=None)
 
 
 @dataclass
 class Digest:
     """Plain-English weekly summary."""
     window_days: int = 7
-    generated_at: str = field(
-default_factory=lambda: datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
-    )
+    generated_at: str = field(default_factory=lambda: _ist_now().isoformat(timespec="seconds"))
     invoices_processed: int = 0
     auto_approved: int = 0
     flagged_for_review: int = 0
@@ -43,12 +51,8 @@ default_factory=lambda: datetime.now(UTC).replace(tzinfo=None).isoformat(timespe
         return asdict(self)
 
 
-def _iso_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
-
-
 def _window_start(window_days: int) -> datetime:
-    return _iso_now() - timedelta(days=window_days)
+    return _ist_now() - timedelta(days=window_days)
 
 
 def _count_by_status(invoices: list[dict[str, Any]]) -> dict[str, int]:
@@ -101,7 +105,7 @@ def _top_vendors(invoices: list[dict[str, Any]], limit: int = 5) -> list[dict[st
 
 def _due_soon(invoices: list[dict[str, Any]], days: int) -> list[dict[str, Any]]:
     """Return invoices whose ``due_date`` falls within ``days`` from now."""
-    cutoff = _iso_now() + timedelta(days=days)
+    cutoff = _ist_now() + timedelta(days=days)
     soon: list[dict[str, Any]] = []
     for invoice in invoices:
         due = _parse_date(invoice.get("due_date"))
