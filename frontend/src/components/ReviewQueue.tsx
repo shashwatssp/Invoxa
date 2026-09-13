@@ -198,7 +198,7 @@ export function ReviewQueue() {
             className="button"
             disabled={submittingItem || !(draft[item.id]?.new_value ?? '').trim()}
           >
-            {submitting ? 'Saving…' : 'Save correction'}
+            {submittingItem ? 'Saving…' : 'Save correction'}
           </button>
           <button
             type="button"

@@ -49,6 +49,7 @@ export function Upload() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [foldersLoading, setFoldersLoading] = useState(true);
 
   // Transient confirmation so the user sees folder filing landed.
   useEffect(() => {
@@ -58,10 +59,13 @@ export function Upload() {
   }, [toast]);
 
   const loadFolders = useCallback(async () => {
+    setFoldersLoading(true);
     try {
       setFolders(await fetchFolders());
     } catch {
       // Folder list is optional sugar; uploads work without it.
+    } finally {
+      setFoldersLoading(false);
     }
   }, []);
 
@@ -239,15 +243,23 @@ export function Upload() {
           <select
             id="upload-folder"
             className="input"
-            value={folderId ?? ''}
+            value={foldersLoading ? '' : folderId ?? ''}
+            disabled={foldersLoading}
+            aria-busy={foldersLoading}
             onChange={(e) => void onFolderChange(e.target.value || null)}
           >
-            <option value="">No folder</option>
-            {folders.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name} ({f.invoice_count})
-              </option>
-            ))}
+            {foldersLoading ? (
+              <option value="">Loading folders…</option>
+            ) : (
+              <>
+                <option value="">No folder</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name} ({f.invoice_count})
+                  </option>
+                ))}
+              </>
+            )}
           </select>
           {showNewFolder ? (
             <span className="folder-picker__new">
