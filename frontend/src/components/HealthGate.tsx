@@ -14,7 +14,8 @@ interface HealthGateProps {
 
 /**
  * HealthGate: pings /health on mount. Render-freezes the app during cold starts
- * (Render free tier: 60-90s), keeping the UI inside a warm-up spinner instead
+ * (serverless backends idle between requests; cold starts are brief, not
+ * minutes), keeping the UI inside a warm-up spinner instead
  * of letting it cascade into error toasts.
  */
 const DEFAULT_TIMEOUT = 65_000;

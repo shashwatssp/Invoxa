@@ -1,6 +1,6 @@
 # Invoxa — Progress & Development Plan
 
-> For internal tracking and review by domain experts. Last updated: Aug 29, 2026.
+> For internal tracking and review by domain experts. Last updated: Sep 13, 2026.
 
 ---
 
@@ -14,8 +14,8 @@ Gemini vision API fallback for low-confidence extractions.
 
 | Layer         | Tech                                              |
 |---------------|--------------------------------------------------|
-| Backend       | Python 3.12 + FastAPI on Render (free tier)       |
-| Frontend      | React 18 + Vite 5 + TypeScript + Shadcn UI        |
+| Backend       | Python 3.12 + FastAPI on Vercel (serverless)      |
+| Frontend      | React 18 + Vite 5 + TypeScript (hand-rolled CSS design system, PWA) |
 | Data Layer    | Supabase Postgres + Storage                       |
 | OCR           | Tesseract 5 (--oem 1, --psm 6) + PyMuPDF + pdfplumber |
 | Validation    | python-stdnum (GSTIN mod-36) + bharatutils        |
@@ -25,12 +25,12 @@ Gemini vision API fallback for low-confidence extractions.
 ### Live Architecture Diagram
 
 ```
-User Browser → Vercel Frontend → Render Python Backend → (OCR + regex OR Gemini API) → Supabase
+User Browser → Vercel Frontend → Vercel Backend (serverless FastAPI) → (OCR + regex OR Gemini API) → Supabase
 ```
 
 ---
 
-## 2. Current Build Status (Aug 29, 2026)
+## 2. Current Build Status (Sep 13, 2026)
 
 ### Sprint Completion
 
@@ -58,8 +58,15 @@ User Browser → Vercel Frontend → Render Python Backend → (OCR + regex OR G
 ### Test Suite
 
 ```
-117 passed, 1 skipped (backend only)
+240 passed, 1 skipped (backend only, Sep 13, 2026)
 ```
+
+Update (Sep 13, 2026): Phases 2–3 shipped on Vercel — auto expense
+categorization (Gemini), editable fields with audit, vendors view with
+WhatsApp/PDF share menu, due-soon card, 6M/12M trend + category spend,
+GST summary export, PWA with share-target ingestion, line items,
+vendor memory, account data export, list pagination, and mobile/landing
+polish. Tests grew from 117 to 240+; CI green.
 
 Test breakdown by file:
 - `test_corrections.py`: 9 tests (correction logging, invoice-level patching, pending review)
@@ -202,7 +209,7 @@ Three main functions:
 ### 3.9 Frontend: React Components (`frontend/src/`)
 
 **Routes** (behind `HealthGate`):
-- `/` — `Dashboard` (stats, CSV download, weekly digest)
+- `/` — `Dashboard` (stats, filters, due-soon, trends, category spend, digest, bulk actions, pagination)
 - `/upload` — `Upload` (drag-drop + Supabase Storage upload + `/api/invoices/upload`)
 - `/review` — `ReviewQueue` (lists flagged invoices, supports corrections/approve)
 
@@ -216,8 +223,8 @@ Three main functions:
 
 ### 3.10 Infrastructure
 
-- `render.yaml` — Render Blueprint (backend free tier, health check `/health`)
-- `backend/Dockerfile` — `python:3.12-slim` + tesseract-ocr (eng, hin)
+- `vercel.json` — Vercel deployment config (frontend + backend services, `/api/*` and `/health` routing)
+- `render.yaml` + `backend/Dockerfile` — legacy hosting artifacts, unused by the Vercel deployment
 - `migrations/0001_init.sql` — 6-table schema (vendors, invoices, extraction_fields, review_queue, corrections, + 1)
 - `scripts/seed.sql` — Sample vendor data
 - `.gitleaks.toml` — Secret scanning config with allowlist (.env.example, README.md, docs/)

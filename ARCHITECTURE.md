@@ -3,7 +3,7 @@
 ## System Overview
 
 ```
-User Browser -> Vercel Frontend -> Render Python Backend -> (OCR + regex OR Gemini API) -> Supabase
+User Browser -> Vercel Frontend -> Vercel Backend (serverless FastAPI) -> (OCR + regex OR Gemini API) -> Supabase
 ```
 
 ## Components
@@ -11,27 +11,27 @@ User Browser -> Vercel Frontend -> Render Python Backend -> (OCR + regex OR Gemi
 ### Frontend (React + Vite on Vercel)
 - **Upload.tsx**: Drag-drop zone, uploads directly to Supabase Storage via publishable key
 - **ReviewQueue.tsx**: Lists flagged invoices, side-by-side view of extracted fields with confidence badges
-- **Dashboard.tsx**: Stats, CSV download, weekly digest
+- **Dashboard.tsx**: Stats, search/status/date filters, due-soon card, monthly trend (6M/12M), spend-by-category bars, weekly digest, bulk folder moves, Show-more pagination
 - **HealthGate**: Checks backend /health before showing full UI; shows warm-up spinner during cold starts
 - Uses `@supabase/supabase-js` with publishable key for Storage access only
 - Calls backend API for extraction, review, export, digest endpoints
 
-### Backend (Python + FastAPI on Render)
+### Backend (Python + FastAPI on Vercel serverless)
 - **app/main.py**: FastAPI app, health endpoint, lifespan management
 - **app/config.py**: Environment variable loading (never logs secrets)
 - **app/supabase.py**: Supabase client wrapper with service key
 - **app/database.py**: Data access layer (invoices, vendors, review queue, corrections)
 - **app/extraction/pipeline.py**: OCR-first extraction pipeline
-- **app/api/**: FastAPI routers (invoices, review, export, digest)
+- **app/api/**: FastAPI routers (auth, folders, invoices, review, export, digest, vendors, reports, account)
 - **app/models/**: Pydantic data models
 - **app/validation/**: GSTIN checksum, duplicate detection, anomaly checking
-- **app/categorization/**: Vendor-to-category rules, history lookup
-- **app/export/**: CSV generation for Tally/Zoho
+- **app/categorization/**: Gemini AI expense categorization (optional) with vendor-memory fallback
+- **app/export/**: CSV, Excel (XLSX), Tally XML, PDF statement, GST summary, vendor summary PDF
 - **app/digest/**: Weekly plain-English summary generation
 - **app/review/**: Review queue logic, correction logging
 
 ### Data Layer (Supabase)
-- **Postgres**: 500MB free tier, 6 tables (vendors, invoices, extraction_fields, review_queue, corrections)
+- **Postgres**: 7 tables (vendors, invoices, extraction_fields, review_queue, corrections, users, folders); migrations 0004-0006 add category, tax_amount and line_items columns to invoices
 - **Storage**: 1GB free tier, invoices bucket for uploaded files
 
 ### Extraction Pipeline
@@ -56,29 +56,34 @@ User Browser -> Vercel Frontend -> Render Python Backend -> (OCR + regex OR Gemi
 
 ### API Endpoints
 - GET /health - warm-up endpoint
-- POST /api/invoices - register invoice after file uploaded to Storage
-- GET /api/invoices - list all invoices with status
-- GET /api/invoices/{id} - single invoice detail with extraction fields
-- POST /api/invoices/{id}/extract - trigger OCR extraction + validation
-- POST /api/invoices/{id}/correct - save human correction
-- GET /api/review/queue - list flagged invoices
-- POST /api/review/{id}/resolve - mark as reviewed or auto-approved
-- GET /api/export/csv - generate CSV for Tally/Zoho
-- GET /api/digest - generate plain-English weekly summary
+- POST /api/auth/signup | login, GET /api/auth/me - JWT sessions
+- GET/POST /api/folders, PATCH/DELETE /api/folders/{id} - per-account folders
+- POST /api/invoices/upload - multipart upload, extraction, auto categorization, vendor memory
+- GET /api/invoices - list with folder/status/date-range/search filters
+- GET /api/invoices/due-soon - unpaid invoices due within N days
+- GET /api/invoices/{id} - detail with extraction fields and line items
+- GET /api/invoices/{id}/file | /preview - receipt PDF stream / page-1 PNG
+- PATCH /api/invoices/{id}/fields | /category | /folder; DELETE /api/invoices/{id}
+- POST /api/invoices/{id}/extract | /correct - re-extraction, human correction
+- GET /api/review/queue, POST /api/review/{id}/resolve | /{id}/correct
+- GET /api/export/csv | xlsx | tally-xml | pdf | gst-summary | preview
+- GET /api/vendors/summary | summary.pdf; GET /api/reports/monthly-spend | category-spend
+- GET /api/digest - weekly summary (optional AI narrative)
+- GET /api/account/export - full-account JSON download
 
 ## Deployment
 
-### Backend (Render Free Tier)
-- 512MB RAM, 750 hrs/month (sleeps after 15 min idle)
-- Dockerfile: python:3.12-slim + tesseract-ocr + tesseract-ocr-eng + tesseract-ocr-hin
-- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- Cold start: 60-90s (mitigated by frontend warm-up spinner and optional cron-job.org keep-alive)
+Both services deploy to Vercel from one repository, configured by vercel.json:
 
-### Frontend (Vercel Hobby)
-- Static site, always on
-- No credit card required
-- Non-commercial use only
+- frontend — Vite, SPA rewrite for client-side routing
+- backend — FastAPI serverless function (entrypoint backend/api/index.py, maxDuration 60s)
+
+Routing: /api/* and /health reach the backend, everything else the frontend.
+Secrets are Vercel project environment variables — nothing sensitive is
+committed. render.yaml and backend/Dockerfile are legacy artifacts, unused
+by this deployment. Serverless cold starts after idle are brief; the
+frontend HealthGate shows a warm-up spinner while /health responds.
 
 ### Database Migrations
 - Applied via Supabase Dashboard SQL editor or Supabase CLI
-- Migration file: migrations/0001_init.sql
+- Migrations: migrations/0001_init.sql (plus git-ignored 0002-0005 and 0006_line_items.sql; see README)
