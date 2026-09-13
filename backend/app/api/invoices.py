@@ -28,7 +28,7 @@ from app.database import (
 )
 from app.extraction.pipeline import extract_from_invoice
 from app.models.invoice import Correction, ExtractionResult, InvoiceStatus
-from app.review.corrections import edit_invoice_field
+from app.review.corrections import edit_invoice_field, normalize_value
 from app.supabase import delete_invoice_file, download_invoice, upload_invoice
 
 router = APIRouter(prefix="/api")
@@ -284,9 +284,6 @@ class InvoiceFieldEdit(BaseModel):
     new_value: str
 
 
-_AMOUNT_FIELDS = {"amount", "tax_amount", "total_amount"}
-
-
 @router.patch("/invoices/{invoice_id}/fields")
 async def edit_invoice_fields_endpoint(
     invoice_id: str, payload: InvoiceFieldEdit, user=Depends(get_current_user)
@@ -295,22 +292,17 @@ async def edit_invoice_fields_endpoint(
 
     The edit is logged in ``corrections`` (audit + accuracy tracking) and
     canonical ``invoices`` columns are updated so dashboards and exports
-    immediately reflect the human-verified value.
+    immediately reflect the human-verified value. Amounts and dates are
+    normalized with the shared correction helper.
     """
     _load_owned_invoice(invoice_id, user)
     field = payload.field_name.strip()
     value = payload.new_value.strip()
 
-    if field in _AMOUNT_FIELDS:
-        try:
-            value = str(float(value.replace(",", "")))
-        except ValueError:
-            raise HTTPException(status_code=422, detail="Amount must be a number.") from None
-    elif field == "due_date":
-        normalized = _iso_date(value)
-        if not normalized:
-            raise HTTPException(status_code=422, detail="Date must be DD/MM/YYYY or YYYY-MM-DD.")
-        value = normalized
+    try:
+        value = normalize_value(field, value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     try:
         correction = edit_invoice_field(invoice_id, field, value)

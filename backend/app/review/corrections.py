@@ -9,23 +9,89 @@ When a reviewer corrects a field on a flagged invoice, the change must:
 3.  For columns that live on ``invoices`` (e.g. ``invoice_number``,
     ``amount``) the canonical column is also patched.
 
+This module also owns value normalization for human-entered corrections:
+``normalize_value`` turns "1,180.50" into a clean number and "15/03/2026"
+into an ISO date so raw display strings never reach numeric/DATE columns.
+
 This module is imported by ``app.api.review`` to provide the HTTP boundary -
 see ``POST /api/review/{review_id}/correct``.
 """
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
 from app.models.invoice import Correction
 from app.supabase import get_client
 
-# Fields that live directly on the invoices table.
+# Fields whose corrected value is written back to the canonical invoices
+# table so dashboards, digests and exports see the human-verified value.
 INVOICE_LEVEL_FIELDS = {
     "invoice_number",
     "amount",
+    "tax_amount",
+    "total_amount",  # stored in invoices.amount (the canonical total)
     "due_date",
 }
+
+# Field name -> invoices column. Most fields share the name; the grand
+# total is stored in the ``amount`` column (the table has no
+# ``total_amount`` column). Fields absent from this map (e.g.
+# ``invoice_date``, ``vendor_*``) live only in extraction_fields.
+INVOICE_COLUMN_MAP = {
+    "invoice_number": "invoice_number",
+    "amount": "amount",
+    "tax_amount": "tax_amount",
+    "total_amount": "amount",
+    "due_date": "due_date",
+}
+
+# Amount-style fields (currency typed by a human, possibly with symbols
+# or thousand separators) and date-style fields handled by normalize_value.
+_AMOUNT_FIELDS = {"amount", "tax_amount", "total_amount"}
+_DATE_FIELDS = {"invoice_date", "due_date"}
+_CURRENCY_NOISE = re.compile(r"[\u20b9\s,]")
+
+
+def _normalize_amount(value: str) -> str:
+    """"1,180.50" / "1 180.50" / "1180.50" -> "1180.5"."""
+    cleaned = _CURRENCY_NOISE.sub("", value)
+    try:
+        return str(float(cleaned))
+    except ValueError:
+        raise ValueError(
+            f"'{value.strip()}' is not a valid amount (e.g. 1180.50)"
+        ) from None
+
+
+def _normalize_date(value: str) -> str:
+    """DD/MM/YYYY and DD-MM-YYYY -> ISO; ISO passes through."""
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value.strip(), fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    raise ValueError(
+        f"'{value.strip()}' is not a valid date (use DD/MM/YYYY or YYYY-MM-DD)"
+    )
+
+
+def normalize_value(field_name: str, value: str) -> str:
+    """Normalize a human-entered correction to its canonical stored form.
+
+    Amounts lose currency symbols/thousand separators and become plain
+    floats ("1,180.50" -> "1180.5"); dates become ISO YYYY-MM-DD;
+    everything else is returned trimmed. Raises ``ValueError`` with a
+    user-facing message when an amount/date cannot be parsed.
+    """
+    field = (field_name or "").strip()
+    raw = (value or "").strip()
+    if field in _AMOUNT_FIELDS:
+        return _normalize_amount(raw)
+    if field in _DATE_FIELDS:
+        return _normalize_date(raw)
+    return raw
 
 # Fields a user may edit from the invoice detail page (no review item
 # needed). Vendor name/GSTIN are excluded on purpose: renaming a vendor
@@ -89,12 +155,18 @@ def log_correction(
     LookupError
         If ``review_id`` does not correspond to a queued review item.
     ValueError
-        If ``field_name`` is empty or ``new_value`` is empty after trimming.
+        If ``field_name`` is empty, ``new_value`` is empty after trimming,
+        or ``field_name`` is not in ``EDITABLE_FIELDS``.
     """
     if not field_name or not field_name.strip():
         raise ValueError("field_name must be a non-empty string")
     if new_value is None or not str(new_value).strip():
         raise ValueError("new_value must be a non-empty string")
+
+    # Same whitelist as the detail-page edit flow: typos or unexpected
+    # field names must not silently create junk extraction rows.
+    if field_name.strip() not in EDITABLE_FIELDS:
+        raise ValueError(f"Field '{field_name}' is not editable")
 
     client = get_client()
     row = _fetch_review_row(client, review_id)
@@ -152,12 +224,14 @@ def apply_correction_to_invoice(correction: Correction) -> dict[str, Any]:
             "confidence": 1.0,
         }).execute()
 
-    # 2. If the corrected field lives directly on the invoices table
-    #    (invoice_number, amount, due_date), patch it there too so API
-    #    consumers see the canonical human-verified value.
-    if correction.field_name in INVOICE_LEVEL_FIELDS:
+    # 2. If the corrected field maps to a canonical invoices column
+    #    (invoice_number, amount, tax_amount, due_date, and the grand
+    #    total which is stored in ``amount``), patch it there too so API
+    #    consumers see the human-verified value.
+    column = INVOICE_COLUMN_MAP.get(correction.field_name)
+    if column:
         client.table("invoices").update({
-            correction.field_name: correction.new_value,
+            column: correction.new_value,
         }).eq("id", correction.invoice_id).execute()
 
     # Return the updated extraction_fields row for the caller.

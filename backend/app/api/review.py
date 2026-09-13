@@ -18,7 +18,11 @@ from app.database import (
     update_invoice_status,
 )
 from app.models.invoice import InvoiceStatus
-from app.review.corrections import apply_correction_to_invoice, log_correction
+from app.review.corrections import (
+    apply_correction_to_invoice,
+    log_correction,
+    normalize_value,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -73,9 +77,22 @@ async def resolve_review(review_id: str, approved: bool, user=Depends(get_curren
     return {"status": "resolved", "approved": approved}
 
 
-class ReviewCorrectionRequest(BaseModel):
+class CorrectionItem(BaseModel):
     field_name: str
     new_value: str
+
+
+class ReviewCorrectionRequest(BaseModel):
+    """One or more field corrections in a single save.
+
+    ``corrections`` is the batch form used by the correction sheet.
+    The flat ``field_name``/``new_value`` pair is the legacy single-field
+    form and is still accepted so older clients keep working.
+    """
+
+    field_name: str | None = None
+    new_value: str | None = None
+    corrections: list[CorrectionItem] | None = None
 
 
 @router.post("/review/{review_id}/correct")
@@ -83,22 +100,55 @@ async def correct_and_resolve(
     review_id: str, payload: ReviewCorrectionRequest, user=Depends(get_current_user)
 ):
     """
-    Submit a human correction for one field of the flagged invoice,
-    persist it to the corrections table, and mark the review item approved.
+    Submit human corrections for any number of fields of the flagged
+    invoice, persist them to the corrections table, and mark the review
+    item approved. Every value is normalized server-side (amounts and
+    dates) before anything is written.
     """
     _assert_same_account(review_id, user)
+
+    items = list(payload.corrections or [])
+    if not items and payload.field_name is not None:
+        items = [
+            CorrectionItem(
+                field_name=payload.field_name, new_value=payload.new_value or ""
+            )
+        ]
+    if not items:
+        raise HTTPException(status_code=400, detail="No corrections supplied.")
+
+    # Normalize + validate everything BEFORE writing anything, so an
+    # invalid value can never leave a half-applied batch behind.
     try:
-        correction = log_correction(
-            review_id=review_id,
-            field_name=payload.field_name,
-            new_value=payload.new_value,
-        )
-        apply_correction_to_invoice(correction)
+        normalized = [
+            CorrectionItem(
+                field_name=item.field_name,
+                new_value=normalize_value(item.field_name, item.new_value),
+            )
+            for item in items
+        ]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        applied: list[dict] = []
+        for item in normalized:
+            correction = log_correction(
+                review_id=review_id,
+                field_name=item.field_name,
+                new_value=item.new_value,
+            )
+            apply_correction_to_invoice(correction)
+            applied.append(correction.model_dump())
         resolve_review_item(review_id, approved=True, reviewed_by=user["id"])
         _sync_invoice_status(review_id, approved=True)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    return {"status": "reviewed", "correction": correction.model_dump()}
+    result: dict = {"status": "reviewed", "corrections": applied}
+    if len(applied) == 1:
+        # Legacy single-field response shape.
+        result["correction"] = applied[0]
+    return result

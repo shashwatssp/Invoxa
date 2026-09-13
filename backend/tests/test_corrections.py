@@ -238,8 +238,55 @@ def test_has_pending_review(fake_client):
     assert has_pending_review("not-present") is False
 
 
+# ------------------------------------------------------------ normalization
+
+
+def test_normalize_amount_strips_separators():
+    assert corrections.normalize_value("amount", "1,180.50") == "1180.5"
+    assert corrections.normalize_value("tax_amount", "1 250") == "1250.0"
+    assert corrections.normalize_value("total_amount", "\u20b91180") == "1180.0"
+    assert corrections.normalize_value("amount", " 42 ") == "42.0"
+
+
+def test_normalize_dates_to_iso():
+    assert corrections.normalize_value("due_date", "15/03/2026") == "2026-03-15"
+    assert corrections.normalize_value("due_date", "15-03-2026") == "2026-03-15"
+    assert corrections.normalize_value("due_date", "2026-03-15") == "2026-03-15"
+    assert corrections.normalize_value("invoice_date", "01/01/2026") == "2026-01-01"
+
+
+def test_normalize_passthrough_text_fields():
+    assert corrections.normalize_value("invoice_number", "  INV-9 ") == "INV-9"
+
+
+def test_normalize_rejects_garbage():
+    with pytest.raises(ValueError):
+        corrections.normalize_value("amount", "lots")
+    with pytest.raises(ValueError):
+        corrections.normalize_value("due_date", "sometime")
+
+
+# ------------------------------------------------------- editable whitelist
+
+
+def test_log_correction_rejects_unknown_field(fake_client):
+    fake_client.table("review_queue").extend([{
+        "id": "rq-2", "invoice_id": "inv-2", "status": "pending",
+    }])
+    with pytest.raises(ValueError, match="not editable"):
+        log_correction(review_id="rq-2", field_name="vendor_name", new_value="Acme")
+
+
 def test_invoice_level_fields_constant():
-    assert {"invoice_number", "amount", "due_date"} == corrections.INVOICE_LEVEL_FIELDS
+    assert {
+        "invoice_number",
+        "amount",
+        "tax_amount",
+        "total_amount",
+        "due_date",
+    } == corrections.INVOICE_LEVEL_FIELDS
+    # The grand total lives in the canonical ``amount`` column.
+    assert corrections.INVOICE_COLUMN_MAP["total_amount"] == "amount"
 
 
 def test_apply_correction_patches_invoice_table(fake_client):
@@ -279,3 +326,54 @@ def test_apply_correction_skips_invoice_table_for_non_invoice_field(fake_client)
     apply_correction_to_invoice(correction)
     assert len(fake_client.tables["invoices"]) == 1
     assert fake_client.tables["invoices"][0]["vendor_name"] == "OldVendor"
+
+
+def test_apply_correction_maps_total_amount_to_amount_column(fake_client):
+    # The invoices table has no total_amount column: the canonical
+    # grand total lives in ``amount``.
+    fake_client.table("invoices").extend([{
+        "id": "inv-70", "amount": 1000.0, "status": "flagged",
+    }])
+    correction = Correction(
+        invoice_id="inv-70",
+        field_name="total_amount",
+        old_value="1000.0",
+        new_value="1180.5",
+        corrected_at="2026-09-02T00:00:00+00:00",
+    )
+    apply_correction_to_invoice(correction)
+    updated = fake_client.tables["invoices"][0]
+    assert updated["amount"] == "1180.5"
+
+
+def test_apply_correction_patches_tax_amount_column(fake_client):
+    fake_client.table("invoices").extend([{
+        "id": "inv-71", "tax_amount": 90.0, "status": "flagged",
+    }])
+    correction = Correction(
+        invoice_id="inv-71",
+        field_name="tax_amount",
+        old_value="90.0",
+        new_value="180.0",
+        corrected_at="2026-09-02T00:00:00+00:00",
+    )
+    apply_correction_to_invoice(correction)
+    updated = fake_client.tables["invoices"][0]
+    assert updated["tax_amount"] == "180.0"
+
+
+def test_apply_correction_invoice_date_stays_extraction_only(fake_client):
+    # invoice_date has no invoices column: only the extraction row.
+    fake_client.table("invoices").extend([{
+        "id": "inv-72", "invoice_number": "INV-72",
+    }])
+    correction = Correction(
+        invoice_id="inv-72",
+        field_name="invoice_date",
+        old_value=None,
+        new_value="2026-03-15",
+        corrected_at="2026-09-02T00:00:00+00:00",
+    )
+    apply_correction_to_invoice(correction)
+    assert len(fake_client.tables["extraction_fields"]) == 1
+    assert "invoice_date" not in fake_client.tables["invoices"][0]

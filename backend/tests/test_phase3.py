@@ -216,3 +216,101 @@ def test_upload_unknown_vendor_stays_unfiled(users, monkeypatch):
     assert "vendor" not in captured
     assert "category" not in captured
     assert res.json()["category"] is None
+
+
+# --------------------------------------------- review corrections (batch)
+
+
+def _patch_review_pipeline(monkeypatch, owner_id="user-1"):
+    """Silence the storage layer behind the correction endpoint and
+    capture everything it writes."""
+    import app.api.review as review_api
+    from app.models.invoice import Correction
+
+    captured: dict = {"corrections": [], "resolved": [], "statuses": []}
+
+    monkeypatch.setattr(review_api, "get_review_item_owner", lambda rid: owner_id)
+
+    def fake_log(review_id, field_name, new_value):
+        captured["corrections"].append(
+            {"field_name": field_name, "new_value": new_value}
+        )
+        return Correction(
+            invoice_id="inv-1",
+            field_name=field_name,
+            old_value=None,
+            new_value=new_value,
+        )
+
+    monkeypatch.setattr(review_api, "log_correction", fake_log)
+    monkeypatch.setattr(review_api, "apply_correction_to_invoice", lambda c: {})
+    monkeypatch.setattr(
+        review_api,
+        "resolve_review_item",
+        lambda rid, approved, reviewed_by: captured["resolved"].append((rid, approved)),
+    )
+    monkeypatch.setattr(review_api, "get_review_item_invoice_id", lambda rid: "inv-1")
+    monkeypatch.setattr(
+        review_api,
+        "update_invoice_status",
+        lambda iid, status: captured["statuses"].append(status.value),
+    )
+    return captured
+
+
+class TestBatchCorrections:
+    def test_applies_every_field_and_resolves_once(self, users, monkeypatch):
+        captured = _patch_review_pipeline(monkeypatch)
+        res = client.post(
+            "/api/review/rq-1/correct",
+            json={"corrections": [
+                {"field_name": "amount", "new_value": "1,180.50"},
+                {"field_name": "due_date", "new_value": "15/03/2026"},
+            ]},
+            headers=_auth_header(users),
+        )
+        assert res.status_code == 200, res.text
+        # Amounts and dates were normalized server-side before writing.
+        assert [c["new_value"] for c in captured["corrections"]] == ["1180.5", "2026-03-15"]
+        assert captured["resolved"] == [("rq-1", True)]
+        assert captured["statuses"] == ["reviewed"]
+        assert len(res.json()["corrections"]) == 2
+
+    def test_legacy_single_field_payload_still_works(self, users, monkeypatch):
+        captured = _patch_review_pipeline(monkeypatch)
+        res = client.post(
+            "/api/review/rq-1/correct",
+            json={"field_name": "amount", "new_value": "1180.00"},
+            headers=_auth_header(users),
+        )
+        assert res.status_code == 200, res.text
+        assert captured["corrections"] == [
+            {"field_name": "amount", "new_value": "1180.0"}
+        ]
+        assert res.json()["correction"]["new_value"] == "1180.0"
+
+    def test_invalid_amount_is_422_and_nothing_is_applied(self, users, monkeypatch):
+        captured = _patch_review_pipeline(monkeypatch)
+        res = client.post(
+            "/api/review/rq-1/correct",
+            json={"corrections": [{"field_name": "amount", "new_value": "lots"}]},
+            headers=_auth_header(users),
+        )
+        assert res.status_code == 422
+        # Nothing was written: the batch is validated before applying.
+        assert captured["corrections"] == []
+        assert captured["resolved"] == []
+
+    def test_empty_payload_is_400(self, users, monkeypatch):
+        _patch_review_pipeline(monkeypatch)
+        res = client.post("/api/review/rq-1/correct", json={}, headers=_auth_header(users))
+        assert res.status_code == 400
+
+    def test_other_accounts_review_id_is_403(self, users, monkeypatch):
+        _patch_review_pipeline(monkeypatch, owner_id="someone-else")
+        res = client.post(
+            "/api/review/rq-1/correct",
+            json={"corrections": [{"field_name": "amount", "new_value": "10"}]},
+            headers=_auth_header(users),
+        )
+        assert res.status_code == 403

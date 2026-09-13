@@ -1,34 +1,17 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   deleteInvoice,
   fetchReviewQueue,
   friendlyError,
   resolveReview,
-  submitCorrection,
   type ReviewQueueItem,
 } from '@/lib/api';
 import { formatINR, formatDate, statusTone } from '@/lib/format';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { CorrectionSheet } from '@/components/CorrectionSheet';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
 import { ReceiptThumb } from '@/components/ReceiptThumb';
-
-// Fields an operator is most likely to need to correct.
-const EDITABLE_FIELDS = [
-  'invoice_number',
-  'invoice_date',
-  'due_date',
-  'amount',
-  'tax_amount',
-  'total_amount',
-] as const;
-
-type EditableField = (typeof EDITABLE_FIELDS)[number];
-
-interface DraftCorrection {
-  field_name: string;
-  new_value: string;
-}
 
 /** Pull the overall confidence the pipeline stamped into the queue reason. */
 function confidenceFromReason(reason: string | null | undefined): number | null {
@@ -48,8 +31,9 @@ export function ReviewQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Record<string, DraftCorrection>>({});
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
+  // Review item currently open in the correction sheet (null = closed).
+  const [correctionItem, setCorrectionItem] = useState<ReviewQueueItem | null>(null);
   // Receipts the approver has opened at least once this session (approve lock).
   const [viewed, setViewed] = useState<Record<string, boolean>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -74,10 +58,6 @@ export function ReviewQueue() {
   useEffect(() => {
     void reload();
   }, []);
-
-  const updateDraft = (reviewId: string, fieldName: string, value: string) => {
-    setDraft((current) => ({ ...current, [reviewId]: { field_name: fieldName, new_value: value } }));
-  };
 
   const markViewed = (invoiceId: string) => {
     setViewed((current) => ({ ...current, [invoiceId]: true }));
@@ -128,26 +108,10 @@ export function ReviewQueue() {
     }
   };
 
-  const handleSubmitCorrection = async (event: FormEvent<HTMLFormElement>, reviewId: string) => {
-    event.preventDefault();
-    const correction = draft[reviewId];
-    if (!correction || !correction.new_value.trim()) return;
-
-    setSubmitting((current) => ({ ...current, [reviewId]: true }));
-    try {
-      await submitCorrection(reviewId, correction.field_name, correction.new_value.trim());
-      removeItem(reviewId, (current) => current.filter((item) => item.id !== reviewId));
-      setToast('Correction saved — the invoice is marked reviewed.');
-      setDraft((current) => {
-        const next = { ...current };
-        delete next[reviewId];
-        return next;
-      });
-    } catch (err) {
-      setError(friendlyError(err, 'Could not save the correction.'));
-    } finally {
-      setSubmitting((current) => ({ ...current, [reviewId]: false }));
-    }
+  const handleCorrectionSaved = (reviewId: string, message: string) => {
+    setCorrectionItem(null);
+    removeItem(reviewId, (current) => current.filter((item) => item.id !== reviewId));
+    setToast(message);
   };
 
   if (loading) {
@@ -162,67 +126,52 @@ export function ReviewQueue() {
 
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
 
-  // The correction + approval form. Rendered in the detail pane on desktop
-  // and inline under each card on mobile (CSS picks the visible one).
-  const actionsForm = (item: ReviewQueueItem, idPrefix: string) => {
+  // The correction + approval actions. Rendered in the detail pane on
+  // desktop and inline under each card on mobile (CSS picks the visible
+  // one). Corrections open the full field-wise sheet.
+  const actionsForm = (item: ReviewQueueItem) => {
     const submittingItem = Boolean(submitting[item.id]);
-    const hasViewed = Boolean(viewed[item.invoice_id]);
-    const selectedField = draft[item.id]?.field_name ?? EDITABLE_FIELDS[0];
     return (
-      <form onSubmit={(event) => handleSubmitCorrection(event, item.id)} style={{ marginTop: '0.75rem' }}>
-        <label className="field__label" htmlFor={`field-${idPrefix}-${item.id}`}>Correct a field</label>
-        <div className="row-actions" style={{ marginTop: '0.35rem', alignItems: 'center' }}>
-          <select
-            id={`field-${idPrefix}-${item.id}`}
-            className="input"
-            style={{ flex: '0 1 auto', width: 'auto' }}
-            value={selectedField}
-            onChange={(event) => updateDraft(item.id, event.target.value, draft[item.id]?.new_value ?? '')}
-          >
-            {EDITABLE_FIELDS.map((name: EditableField) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          <input
-            className="input"
-            type="text"
-            placeholder="corrected value"
-            value={draft[item.id]?.new_value ?? ''}
-            onChange={(event) => updateDraft(item.id, selectedField, event.target.value)}
-            style={{ flex: 1 }}
-          />
+      <div className="row-actions review-item__form" style={{ marginTop: '0.75rem' }}>
+        <button
+          type="button"
+          className="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setCorrectionItem(item);
+          }}
+          title="Correct any field - opens a form with all fields at once"
+        >
+          Correct details
+        </button>
+        <button
+          type="button"
+          className="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            handleApprove(item.id);
+          }}
+          disabled={submittingItem}
+          title="Approve this receipt"
+        >
+          Approve as-is
+        </button>
+        <button
+          type="button"
+          className="button button--danger"
+          onClick={(event) => {
+            event.stopPropagation();
+            setConfirmDeleteId(item.id);
+          }}
+          disabled={submittingItem}
+          title="Delete this invoice - use for anything uploaded by mistake"
+        >
+          Delete
+        </button>
+        <div className="muted" style={{ fontSize: '0.8rem', width: '100%' }}>
+          Correcting saves every edited field at once and marks the invoice as reviewed.
         </div>
-        <div className="row-actions" style={{ marginTop: '0.6rem' }}>
-          <button
-            type="submit"
-            className="button"
-            disabled={submittingItem || !(draft[item.id]?.new_value ?? '').trim()}
-          >
-            {submittingItem ? 'Saving…' : 'Save correction'}
-          </button>
-          <button
-            type="button"
-            className="button"
-            onClick={() => handleApprove(item.id)}
-            disabled={submittingItem}
-            title="Approve this receipt"
-          >
-            Approve as-is
-          </button>
-          <button
-            type="button"
-            className="button button--danger"
-            onClick={() => setConfirmDeleteId(item.id)}
-            disabled={submittingItem}
-            title="Delete this invoice - use for anything uploaded by mistake"
-          >
-            Delete
-          </button>
-        </div>
-        <div className="muted" style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>
-          Approving marks the invoice as reviewed and removes it from this queue.
-        </div>
-      </form>
+      </div>
     );
   };
 
@@ -284,7 +233,7 @@ export function ReviewQueue() {
               Full detail
             </Link>
           </div>
-          <div className="review-item__actions">{actionsForm(item, 'card')}</div>
+          <div className="review-item__actions">{actionsForm(item)}</div>
         </div>
       </article>
     );
@@ -349,13 +298,21 @@ export function ReviewQueue() {
                   <ReceiptThumb invoiceId={selectedItem.invoice_id} large />
                   <span className="review-detail__hint">Open full PDF</span>
                 </button>
-                {actionsForm(selectedItem, 'pane')}
+                {actionsForm(selectedItem)}
               </>
             ) : (
               <p className="muted">Select an invoice from the queue.</p>
             )}
           </aside>
         </div>
+      )}
+
+      {correctionItem && (
+        <CorrectionSheet
+          item={correctionItem}
+          onClose={() => setCorrectionItem(null)}
+          onSaved={(message) => handleCorrectionSaved(correctionItem.id, message)}
+        />
       )}
 
       {viewerInvoiceId && (() => {

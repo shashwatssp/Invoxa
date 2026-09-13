@@ -459,6 +459,19 @@ export async function submitCorrection(
   await api.post(`/api/review/${reviewId}/correct`, { field_name: fieldName, new_value: newValue });
 }
 
+export interface CorrectionInput {
+  field_name: string;
+  new_value: string;
+}
+
+/** Save several field corrections for one review item in a single save. */
+export async function submitCorrections(
+  reviewId: string,
+  corrections: CorrectionInput[],
+): Promise<void> {
+  await api.post(`/api/review/${reviewId}/correct`, { corrections });
+}
+
 export async function fetchDigest(days: number): Promise<Record<string, unknown>> {
   const { data } = await api.get('/api/digest', { params: { days } });
   return data;
