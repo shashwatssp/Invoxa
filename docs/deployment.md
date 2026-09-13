@@ -1,50 +1,69 @@
 # Deploying Invoxa
 
 Invoxa is a two-service architecture: a Python FastAPI backend and a React/Vite
-frontend, sharing Supabase as the data plane. This document summarises the
-hosting targets.
+frontend, sharing Supabase as the data plane. Both services deploy to **Vercel**
+from one repository and share one domain.
 
-## Backend - Render (free tier)
+## Hosting - Vercel (both services)
 
-1. Connect the GitHub repository in [Render](https://render.com).
-2. The repository ships a [render.yaml](../render.yaml) Blueprint that creates a
-   single Docker web service named `invoxa-api`.
-3. Supply the four required secrets (`SUPABASE_URL`,
-   `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_KEY`, `GEMINI_API_KEY`) in the
-   service's environment tab.  The Blueprint declares them as `sync: false` so
-   they remain platform-managed.
-4. Render will:
-   - build using `backend/Dockerfile` (python:3.12-slim + tesseract-ocr);
-   - run `uvicorn app.main:app --host 0.0.0.0 --port $PORT`;
-   - ping `/health`.  A 200 response flips the service from "sleeping" to
-     "awake" when traffic returns.
-5. Free-tier cold starts are 60-90s.  Frontend uses `HealthGate` to show a
-   warm-up spinner during the wake-up.
+[`vercel.json`](../vercel.json) at the repo root owns the whole deployment:
 
-## Frontend - Vercel (Hobby)
+- **frontend** — Vite project rooted at `frontend/`, with an SPA rewrite
+  (`/(.*) -> /index.html`) so client-side routes like `/app/invoices/<id>`
+  work on hard refresh.
+- **backend** — FastAPI as a Python serverless function rooted at `backend/`,
+  entrypoint [`api/index.py`](../backend/api/index.py), with the function
+  timeout raised to 60s so long OCR/AI extractions fit.
 
-1. Import the repository and set the **Root Directory** to `frontend`.
-2. The framework preset "Vite" should auto-detect; if not, set build command
-   `npm run build` and output directory `dist`.
-3. Add the env vars from [`frontend/.env.example`](../frontend/.env.example):
-   - `VITE_API_BASE_URL` -> `https://<your-render-subdomain>.onrender.com`
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_PUBLISHABLE_KEY`
-4. Vercel serves the static bundle from its global CDN.  No additional
-   configuration needed.
-5. Because the project is non-commercial, Vercel Hobby is acceptable per the
-   audit log guidance.
+Public routing is handled by the project-level rewrites:
+
+| Path | Served by |
+| --- | --- |
+| `/api/*` | backend function |
+| `/health` | backend function |
+| everything else | frontend (SPA) |
+
+### Steps
+
+1. Import the GitHub repository into Vercel. The `vercel.json` services are
+   picked up automatically — no per-project root-directory tweaks needed.
+2. Configure the secrets as project environment variables (nothing sensitive
+   is committed):
+   - `SUPABASE_URL`
+   - `SUPABASE_PUBLISHABLE_KEY`
+   - `SUPABASE_SERVICE_KEY`
+   - `SECRET_KEY` — random 64-hex string; required for stable JWT sessions
+   - `GEMINI_API_KEY` — optional, enables the AI vision/categorization assists
+3. Deploy. Both halves go live together on the same domain.
+4. Verify `https://<your-deployment>.vercel.app/health` returns
+   `{"status": "ok"}`.
+
+### Cold starts
+
+Vercel serverless functions may idle between requests; the first request after
+an idle period pays a short cold-start (typically a few seconds, not minutes).
+The frontend's `HealthGate` component pings `/health` and shows a warm-up
+spinner so the app never cascades into errors during that window.
+
+> Note: `render.yaml` and `backend/Dockerfile` in the repository are legacy
+> artifacts from an earlier hosting experiment and are not used by the Vercel
+> deployment.
 
 ## Database - Supabase
-|
-|4|1. Apply migrations manually or via the Supabase CLI:
+
+1. Apply migrations manually or via the Supabase CLI, in order:
+
    ```bash
    psql "$DATABASE_URL" -f migrations/0001_init.sql
-   psql "$DATABASE_URL" -f scripts/seed.sql   # optional sample vendors
+   psql "$DATABASE_URL" -f migrations/0006_line_items.sql
    ```
-2. Create the **`invoices`** Storage bucket (1GB free tier) with
-   `raw/` and `processed/` paths exposed as public-read if you want the
-   frontend to download previews.
+
+   (`0002_auth.sql`–`0005_tax.sql` are kept out of the repo by `.gitignore`;
+   apply them with `python scripts/apply_0004.py`, `python scripts/apply_0005.py`
+   — and `python scripts/apply_0006.py` — or by hand in the Supabase SQL editor.)
+
+2. Create the **invoices** Storage bucket with `raw/` and `processed/` paths
+   exposed as public-read if you want the frontend to download previews.
 3. Note the publishable (anon) key and service-role key for the backend.
 
 ## Local Docker Compose
@@ -59,34 +78,39 @@ local loop.
 ## Pre-commit Hooks
 
 Install the pre-commit framework and hooks:
+
 ```bash
 pip install pre-commit
 pre-commit install
 ```
+
 This installs the gitleaks secret scanner, which runs on every commit and
 in CI via the `secret-scan` job in `.github/workflows/ci.yml`.
 
 ## Troubleshooting
 
 ### Backend won't start - missing env vars
-- Ensure all `SUPABASE_*` and `GEMINI_API_KEY` variables are set. The service
-  raises `RuntimeError` at import time if `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`,|
-  or `SUPABASE_SERVICE_KEY` are missing.
+- Ensure all `SUPABASE_*`, `SECRET_KEY`, and (optionally) `GEMINI_API_KEY`
+  variables are set. The service raises `RuntimeError` at import time if
+  `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, or `SUPABASE_SERVICE_KEY`
+  are missing.
 
 ### Frontend build fails - `npm ci` errors
 - Use `npm install` instead of `npm ci` (no lock file is committed yet).
 
-### Cold starts on Render
-- Free-tier services sleep after 15 minutes of inactivity and take 60-90s to
-  wake. The frontend's `HealthGate` component shows a warm-up spinner during this
-  window. Consider a cron-job.org keep-alive for always-on behaviour.
+### Function timeout on long extractions
+- The backend function runs with `maxDuration: 60` (seconds). Scanned PDFs
+  that need the OCR + AI fallback path stay well inside this; if you add
+  heavier processing, raise the value in `vercel.json`.
 
 ### Tesseract not found (Docker build)
-- The `backend/Dockerfile` installs `tesseract-ocr` with `eng` and `hin` language
-  packs. If building locally, ensure the apt packages are installed.
+- The legacy `backend/Dockerfile` installs `tesseract-ocr` with `eng` and
+  `hin` language packs. This only matters for the optional local Docker
+  setup; the Vercel deployment does not use Docker.
 
 ### Tests fail locally - missing `supabase` package
-- The `supabase` Python package may not be installed in your local environment.|
-  This is expected for running the test suite only (the code uses lazy imports|
-  so tests pass with placeholder env vars and a faked client).
-  Run `pip install -r backend/requirements-dev.txt` to install all test deps.
+- The `supabase` Python package may not be installed in your local
+  environment. This is expected for running the test suite only (the code
+  uses lazy imports so tests pass with placeholder env vars and a faked
+  client). Run `pip install -r backend/requirements-dev.txt` to install all
+  test deps.

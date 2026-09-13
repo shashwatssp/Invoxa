@@ -155,9 +155,14 @@ The invoice list can be narrowed with server-side filters, combinable with the f
 
 A dedicated page aggregates spend per vendor: total spend, invoice count, and the last invoice date, sorted by biggest spend. One **Share** button opens a menu to send the summary as a pre-filled WhatsApp text message or as a PDF file; each vendor row also keeps its one-tap share.
 
+### Uploads
+
+- **Multi-file uploads with progress** — drop or pick several receipts at once (PDFs and phone photos); each file shows its own processing state and confidence badge, and image-only files are read by the AI vision fallback.
+- **Destination first** — choose the folder before uploading; every completed file shows a green "Done · Added to <folder>" marker (or "No folder"), and changing the folder after uploading re-files the whole batch with a toast confirmation.
+- **Share into Invoxa** — when installed as a PWA, share a PDF or photo straight from WhatsApp, Photos, or Files and it lands on the Upload page, ready to process.
+
 ### Managing invoices
 
-- **Upload Done markers** — every uploaded file shows a green "Done · Added to <folder>" marker (or "No folder"), so you always know the upload landed where you intended. Changing the folder after uploading re-files the batch and confirms with a toast.
 - **Move to folder in bulk** — tick invoices on the dashboard and file them into any folder in one action.
 - **Edit fields anywhere** — invoice number, dates, and amounts can be corrected right on the invoice detail page (not only via the review queue); every edit is logged as a correction, marks the field human-verified, and updates dashboards and exports immediately.
 - **Delete an invoice** — a wrong upload can be removed permanently from its detail page (with a confirmation), including the stored receipt file and any review-queue entries.
@@ -207,7 +212,7 @@ GEMINI_API_KEY=...          # optional, enables the vision fallback
 DATABASE_URL=...            # optional, for CLI migrations
 ```
 
-Apply migrations in your Supabase SQL editor: `migrations/0001_init.sql`, then `0002_auth.sql`, `0003_folders.sql`, `0004_category.sql` and `0005_tax.sql` (0002+ are kept out of the repo — see `.gitignore`; apply with `python scripts/apply_0004.py`, `python scripts/apply_0005.py`, or by hand).
+Apply migrations in your Supabase SQL editor: `migrations/0001_init.sql`, then `0002_auth.sql`, `0003_folders.sql`, `0004_category.sql`, `0005_tax.sql` and `0006_line_items.sql` (0002+ are kept out of the repo — see `.gitignore`; apply with `python scripts/apply_0004.py`, `python scripts/apply_0005.py`, `python scripts/apply_0006.py`, or by hand).
 
 ### Frontend
 
@@ -220,7 +225,7 @@ npm run dev      # http://localhost:5173, API proxied to :8000
 ### Tests
 
 ```bash
-cd backend && python -m pytest tests -q          # 235+ unit/integration tests
+cd backend && python -m pytest tests -q          # 240+ unit/integration tests
 python -m ruff check backend                     # lint
 cd frontend && npm run typecheck && npm run build
 ```
