@@ -2,12 +2,28 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthContext';
 import { applyThemePreference, getThemePreference, type ThemePreference } from '@/lib/theme';
+import { exportAccountData, friendlyError } from '@/lib/api';
 
 /** Profile + session: the one place that always offers Sign out,
  * including on phones where the top nav is hidden. */
 export function Account() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  /** Download the whole account (profile, invoices, folders, review queue) as JSON. */
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await exportAccountData();
+    } catch (err) {
+      setExportError(friendlyError(err, 'Could not export your data.'));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleSignOut = () => {
     logout();
@@ -42,6 +58,20 @@ export function Account() {
           <h2>Appearance</h2>
         </div>
         <ThemePicker />
+      </section>
+
+      <section className="card">
+        <div className="card__header">
+          <h2>Your data</h2>
+        </div>
+        <p className="muted" style={{ margin: '0 0 1rem', fontSize: '0.9rem' }}>
+          Download everything in your account — profile, invoices, folders,
+          and review history — as one JSON file.
+        </p>
+        {exportError && <div className="error-banner">{exportError}</div>}
+        <button type="button" className="button button--secondary" onClick={() => void handleExport()} disabled={exporting}>
+          {exporting ? 'Preparing…' : 'Export my data'}
+        </button>
       </section>
 
       <section className="card">

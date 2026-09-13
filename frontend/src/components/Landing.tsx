@@ -1,5 +1,50 @@
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthContext';
+
+type Feature = (typeof FEATURES)[number];
+
+/** Scroll reveal: flags the element once it enters the viewport (once only).
+ * Dependency-free stand-in for framer-motion's whileInView. */
+function useReveal<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setShown(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShown(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.15 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  return { ref, shown };
+}
+
+function FeatureCard({ feature, index }: { feature: Feature; index: number }) {
+  const { ref, shown } = useReveal<HTMLElement>();
+  return (
+    <article
+      ref={ref}
+      className={`card landing__feature${shown ? ' landing__feature--shown' : ''}`}
+      style={{ '--reveal-delay': `${index * 90}ms` } as CSSProperties}
+    >
+      <span className="landing__feature-icon" aria-hidden>{feature.icon}</span>
+      <h3>{feature.title}</h3>
+      <p>{feature.body}</p>
+    </article>
+  );
+}
 
 const FEATURES = [
   {
@@ -88,12 +133,8 @@ export function Landing() {
       </main>
 
       <section className="landing__features" aria-label="What you get">
-        {FEATURES.map((feature) => (
-          <article key={feature.title} className="card landing__feature">
-            <span className="landing__feature-icon" aria-hidden>{feature.icon}</span>
-            <h3>{feature.title}</h3>
-            <p>{feature.body}</p>
-          </article>
+        {FEATURES.map((feature, index) => (
+          <FeatureCard key={feature.title} feature={feature} index={index} />
         ))}
       </section>
 

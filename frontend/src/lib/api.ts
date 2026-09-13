@@ -120,8 +120,14 @@ export interface ExtractionField {
   created_at: string;
 }
 
+export interface LineItem {
+  description: string;
+  amount: number;
+}
+
 export interface InvoiceDetail extends InvoiceSummary {
   extraction_fields: ExtractionField[];
+  line_items?: LineItem[] | null;
 }
 
 export interface ExtractedFields {
@@ -374,6 +380,23 @@ export interface MonthlySpendPoint {
 export async function fetchMonthlySpend(months = 6): Promise<MonthlySpendPoint[]> {
   const { data } = await api.get<MonthlySpendPoint[]>('/api/reports/monthly-spend', { params: { months } });
   return data;
+}
+
+export interface CategorySpendRow {
+  category: string;
+  total_spend: number;
+}
+
+/** Total spend per expense category, biggest first. */
+export async function fetchCategorySpend(): Promise<CategorySpendRow[]> {
+  const { data } = await api.get<CategorySpendRow[]>('/api/reports/category-spend');
+  return data;
+}
+
+/** Download everything in the account (profile, invoices, folders,
+ * review queue) as a single JSON file. */
+export async function exportAccountData(): Promise<void> {
+  await downloadBlob('/api/account/export', 'invoxa_account_export.json');
 }
 
 /** Download the month-by-month GST summary CSV. */

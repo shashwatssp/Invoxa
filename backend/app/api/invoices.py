@@ -14,10 +14,12 @@ from app.database import (
     add_to_review_queue,
     create_invoice,
     delete_invoice,
+    find_vendor_by_name,
     get_due_soon_rows,
     get_folder,
     get_invoice,
     get_invoices,
+    get_latest_category_for_vendor,
     get_or_create_vendor,
     save_correction,
     save_extraction_result,
@@ -68,6 +70,8 @@ def _write_back_canonical_fields(invoice_id: str, result: ExtractionResult) -> N
     due_date = _iso_date(result.due_date)
     if due_date:
         fields["due_date"] = due_date
+    if result.line_items:
+        fields["line_items"] = result.line_items
     update_invoice_fields(invoice_id, fields)
 
 
@@ -195,16 +199,24 @@ async def upload_and_register(
     # digest and CSV export show real values.
     _write_back_canonical_fields(invoice_id, result)
 
-    # Update invoice vendor if found
+    # Vendor association: by GSTIN when present, else vendor memory
+    # (case-insensitive name match on previously seen vendors).
+    vendor_id = None
     if result.vendor_gstin:
         vendor_id = get_or_create_vendor(
             gstin=result.vendor_gstin, name=result.vendor_name
         )
-        if vendor_id:
-            _db_update_vendor(invoice_id, vendor_id)
+    elif result.vendor_name:
+        known = find_vendor_by_name(result.vendor_name)
+        if known:
+            vendor_id = known["id"]
+    if vendor_id:
+        _db_update_vendor(invoice_id, vendor_id)
 
     # Auto expense categorization (Gemini, optional). Never blocks the
-    # upload: any failure simply leaves the invoice uncategorized.
+    # upload: any failure simply leaves the invoice uncategorized. When
+    # AI has no answer, vendor memory kicks in: the category this vendor
+    # was last seen with is reused.
     category = None
     try:
         category = ai_category(
@@ -215,6 +227,8 @@ async def upload_and_register(
         )
     except Exception:  # categorization must never fail an upload
         category = None
+    if not category and vendor_id:
+        category = get_latest_category_for_vendor(vendor_id)
     if category:
         update_invoice_fields(invoice_id, {"category": category})
 

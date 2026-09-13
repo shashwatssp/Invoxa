@@ -139,7 +139,7 @@ def get_invoice(invoice_id: str) -> dict | None:
     """
     inv = _db().table("invoices").select(
         "id, vendor_id, invoice_number, amount, due_date, status, storage_path, "
-        "created_at, created_by, category"
+        "created_at, created_by, category, line_items"
     ).eq("id", invoice_id).limit(1).execute()
 
     if not inv.data:
@@ -244,6 +244,25 @@ def get_or_create_vendor(gstin: str | None = None, name: str | None = None) -> s
         vendor_data["name"] = name
     result = _db().table("vendors").insert(vendor_data).execute()
     return result.data[0]["id"]
+
+
+def find_vendor_by_name(name: str) -> dict | None:
+    """Vendor memory: case-insensitive exact-name match, None when unseen."""
+    if not name or not name.strip():
+        return None
+    result = _db().table("vendors").select("id, name, gstin").ilike(
+        "name", name.strip()
+    ).limit(1).execute()
+    return result.data[0] if result.data else None
+
+
+def get_latest_category_for_vendor(vendor_id: str) -> str | None:
+    """Most recent non-null category used by this vendor (memory for new uploads)."""
+    result = _db().table("invoices").select("category").eq(
+        "vendor_id", vendor_id
+    ).not_.is_("category", "null").order("created_at", desc=True).limit(1).execute()
+    rows = result.data or []
+    return rows[0].get("category") if rows else None
 
 
 # --- Folders ---
@@ -365,6 +384,35 @@ def vendor_spend_summary(user_id: str) -> list[dict]:
             entry["last_invoice"] = last_date
     ranked = sorted(totals.values(), key=lambda item: item["total_spend"], reverse=True)
     return ranked
+
+
+def category_spend(user_id: str) -> list[dict]:
+    """Total spend per expense category, biggest first (nulls grouped as 'other')."""
+    totals: dict[str, float] = {}
+    for row in get_invoices(user_id):
+        category = (row.get("category") or "other").strip() or "other"
+        with contextlib.suppress(TypeError, ValueError):
+            totals[category] = totals.get(category, 0.0) + float(row.get("amount") or 0)
+    ranked = [
+        {"category": category, "total_spend": total}
+        for category, total in sorted(totals.items(), key=lambda item: item[1], reverse=True)
+    ]
+    return ranked
+
+
+def export_account_data(user_id: str) -> dict:
+    """Full account data as a JSON-serializable dict (user-initiated export)."""
+    user = get_user_by_id(user_id) or {}
+    user.pop("password_hash", None)
+    folders = list_folders(user_id)
+    review = get_review_queue(user_id)
+    return {
+        "exported_at": dt.datetime.now(dt.UTC).replace(tzinfo=None).isoformat(timespec="seconds"),
+        "user": user,
+        "folders": folders,
+        "invoices": get_invoices(user_id),
+        "review_queue": review,
+    }
 
 
 def monthly_spend(user_id: str, months: int = 6) -> list[dict]:

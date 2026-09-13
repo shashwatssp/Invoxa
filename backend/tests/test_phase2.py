@@ -147,6 +147,8 @@ def test_upload_auto_categorizes(users, monkeypatch):
     monkeypatch.setattr(inv_api, "save_extraction_result", lambda iid, r: None)
     monkeypatch.setattr(inv_api, "update_invoice_fields", lambda iid, fields: captured.update(fields))
     monkeypatch.setattr(inv_api, "update_invoice_status", lambda *a, **k: None)
+    # No vendor memory for this fake vendor (keeps the test offline).
+    monkeypatch.setattr(inv_api, "find_vendor_by_name", lambda name: None)
 
     def fake_ai_category(**kwargs):
         return "office_supplies"

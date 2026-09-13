@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  fetchCategorySpend,
   fetchDigest,
   fetchDueSoon,
   fetchFolders,
@@ -8,6 +9,7 @@ import {
   fetchMonthlySpend,
   friendlyError,
   moveInvoicesToFolder,
+  type CategorySpendRow,
   type DueSoonItem,
   type FolderInfo,
   type InvoiceSummary,
@@ -31,6 +33,9 @@ interface DigestPayload {
   narrative_source?: string;
   [k: string]: unknown;
 }
+
+/** Client-side render cap for the invoice list; "Show more" adds another page. */
+const PAGE_SIZE = 100;
 
 /** Status filter options mirroring the backend InvoiceStatus enum. */
 const STATUS_OPTIONS: { value: string; label: string }[] = [
@@ -77,6 +82,9 @@ export function Dashboard() {
   const [toast, setToast] = useState<string | null>(null);
   const [dueSoon, setDueSoon] = useState<DueSoonItem[]>([]);
   const [trend, setTrend] = useState<MonthlySpendPoint[]>([]);
+  const [trendMonths, setTrendMonths] = useState<6 | 12>(6);
+  const [categorySpend, setCategorySpend] = useState<CategorySpendRow[]>([]);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Transient confirmation (e.g. after a bulk move).
   useEffect(() => {
@@ -95,7 +103,7 @@ export function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [invoiceList, folderList, digestPayload, dueSoonList, trendList] = await Promise.all([
+      const [invoiceList, folderList, digestPayload, dueSoonList, trendList, categoryList] = await Promise.all([
         fetchInvoices(folderScope === 'all' ? null : folderScope, {
           search: search || null,
           status: statusFilter || null,
@@ -106,12 +114,14 @@ export function Dashboard() {
         fetchDigest(7),
         fetchDueSoon(5),
         fetchMonthlySpend(6),
+        fetchCategorySpend(),
       ]);
       setInvoices(invoiceList);
       setFolders(folderList);
       setDigest(digestPayload as DigestPayload);
       setDueSoon(dueSoonList);
       setTrend(trendList);
+      setCategorySpend(categoryList);
       // Drop selections that are no longer visible.
       setSelected((current) => {
         const visible = new Set(invoiceList.map((i) => i.id));
@@ -130,6 +140,21 @@ export function Dashboard() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folderScope, search, statusFilter, fromDate, toDate]);
+
+  // New result set: collapse the list back to the first page.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [folderScope, search, statusFilter, fromDate, toDate]);
+
+  /** Swap the trend chart between 6 and 12 months without a full reload. */
+  const changeTrendMonths = async (months: 6 | 12) => {
+    setTrendMonths(months);
+    try {
+      setTrend(await fetchMonthlySpend(months));
+    } catch {
+      // The chart keeps its previous data; the next full reload retries.
+    }
+  };
 
   const hasActiveFilters = Boolean(search || statusFilter || fromDate || toDate);
 
@@ -174,7 +199,11 @@ export function Dashboard() {
     return { counts, totalAmount };
   }, [invoices]);
 
-  const allVisibleSelected = invoices.length > 0 && invoices.every((i) => selected.has(i.id));
+  // Pagination: only the first `visibleCount` rows are rendered.
+  const visibleInvoices = invoices.slice(0, visibleCount);
+  const hiddenCount = invoices.length - visibleInvoices.length;
+
+  const allVisibleSelected = visibleInvoices.length > 0 && visibleInvoices.every((i) => selected.has(i.id));
 
   const toggleInvoice = (id: string) => {
     setSelected((current) => {
@@ -187,12 +216,12 @@ export function Dashboard() {
 
   const toggleAllVisible = () => {
     setSelected((current) => {
-      if (invoices.every((i) => current.has(i.id))) {
+      if (visibleInvoices.every((i) => current.has(i.id))) {
         const next = new Set(current);
-        invoices.forEach((i) => next.delete(i.id));
+        visibleInvoices.forEach((i) => next.delete(i.id));
         return next;
       }
-      return new Set(invoices.map((i) => i.id));
+      return new Set(visibleInvoices.map((i) => i.id));
     });
   };
 
@@ -311,7 +340,22 @@ export function Dashboard() {
           <section className="card" style={{ marginTop: '1rem' }} aria-label="Monthly spend trend">
             <div className="card__header">
               <h2>Monthly spend</h2>
-              <span className="muted" style={{ fontSize: '0.85rem' }}>Last 6 months</span>
+              <div className="segmented trend-months" role="group" aria-label="Trend range">
+                <button
+                  type="button"
+                  className={`segmented__item${trendMonths === 6 ? ' segmented__item--active' : ''}`}
+                  onClick={() => void changeTrendMonths(6)}
+                >
+                  6M
+                </button>
+                <button
+                  type="button"
+                  className={`segmented__item${trendMonths === 12 ? ' segmented__item--active' : ''}`}
+                  onClick={() => void changeTrendMonths(12)}
+                >
+                  12M
+                </button>
+              </div>
             </div>
             {trend.length > 0 && (
               <div className="trend">
@@ -327,6 +371,35 @@ export function Dashboard() {
                   );
                 })}
               </div>
+            )}
+          </section>
+
+          <section className="card" style={{ marginTop: '1rem' }} aria-label="Spend by category">
+            <div className="card__header">
+              <h2>Spend by category</h2>
+              <span className="muted" style={{ fontSize: '0.85rem' }}>All time</span>
+            </div>
+            {categorySpend.length === 0 ? (
+              <p className="muted" style={{ margin: 0 }}>
+                No categorized spend yet. Categories are assigned automatically
+                (or by you) on the invoice detail page.
+              </p>
+            ) : (
+              <ul className="catspend">
+                {categorySpend.map((row) => {
+                  const max = Math.max(...categorySpend.map((r) => r.total_spend), 1);
+                  const width = Math.max((row.total_spend / max) * 100, 2);
+                  return (
+                    <li key={row.category} className="catspend__row">
+                      <span className="catspend__label">{row.category.replace('_', ' ')}</span>
+                      <span className="catspend__bar-wrap">
+                        <span className="catspend__bar" style={{ width: `${width}%` }} />
+                      </span>
+                      <span className="catspend__amount">{formatINR(row.total_spend)}</span>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </section>
 
@@ -484,7 +557,7 @@ export function Dashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {invoices.map((invoice) => (
+                      {visibleInvoices.map((invoice) => (
                         <tr key={invoice.id}>
                           <td>
                             <input
@@ -513,7 +586,7 @@ export function Dashboard() {
                 </div>
                 {/* Mobile: stacked cards */}
                 <div className="table-rowcard">
-                  {invoices.map((invoice) => (
+                  {visibleInvoices.map((invoice) => (
                     <div key={invoice.id} className="rowcard rowcard--selectable">
                       <input
                         type="checkbox"
@@ -543,6 +616,20 @@ export function Dashboard() {
                     </div>
                   ))}
                 </div>
+                {hiddenCount > 0 && (
+                  <div className="show-more">
+                    <span className="muted">
+                      Showing {visibleInvoices.length} of {invoices.length} invoices
+                    </span>
+                    <button
+                      type="button"
+                      className="button button--secondary"
+                      onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
+                    >
+                      Show {Math.min(hiddenCount, PAGE_SIZE)} more
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </section>

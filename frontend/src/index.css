@@ -689,6 +689,157 @@ select.input {
   color: var(--color-muted);
 }
 
+/* Compact 6M/12M toggle in the trend card header */
+
+.trend-months {
+  width: auto;
+  min-width: 7rem;
+}
+
+.trend-months .segmented__item {
+  min-height: 2.1rem;
+  padding: 0.25rem 0.9rem;
+  font-size: 0.8rem;
+}
+
+/* Spend-by-category horizontal bars (dashboard) */
+
+.catspend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.catspend__row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.88rem;
+}
+
+.catspend__label {
+  flex: 0 0 9.5rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catspend__bar-wrap {
+  flex: 1;
+  min-width: 4rem;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+.catspend__bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 55%, transparent));
+}
+
+.catspend__amount {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Invoice detail line items */
+
+.line-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.line-items__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.92rem;
+}
+
+.line-items__row:last-child { border-bottom: none; }
+
+.line-items__desc {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.line-items__amount {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Share button + popover menu (Vendors page header) */
+
+.share-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.share-menu__popover {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 95;
+  min-width: 11rem;
+  padding: 0.3rem;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 0.6rem;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+}
+
+.share-menu__popover button {
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-fg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.share-menu__popover button:hover:not(:disabled),
+.share-menu__popover button:focus-visible {
+  background: var(--color-primary-soft, var(--color-bg));
+  color: var(--color-primary);
+}
+
+.share-menu__popover button:disabled {
+  color: var(--color-muted);
+  cursor: default;
+}
+
+/* Long invoice lists: caption + Show more button */
+
+.show-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 0 0.25rem;
+}
+
 /* Landing footer legal links */
 
 .landing__footer {
@@ -1194,12 +1345,38 @@ select.input {
 
 .landing__features {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  /* Explicit 4-2-1 columns: auto-fit let a lone card wrap onto its own
+     row on mid-size screens, which read as "misaligned". */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.9rem;
   padding: 0 1.5rem 2.5rem;
   max-width: 1100px;
   margin: 0 auto;
   width: 100%;
+}
+
+@media (max-width: 900px) {
+  .landing__features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .landing__features { grid-template-columns: 1fr; }
+}
+
+.landing__feature {
+  height: 100%; /* equal-height cards in a row */
+  opacity: 0; /* revealed by the scroll-in animation below */
+  transition: translate 0.2s ease, box-shadow 0.2s ease;
+}
+
+.landing__feature--shown {
+  animation: rise 0.55s ease both;
+  animation-delay: var(--reveal-delay, 0ms); /* stagger per card */
+}
+
+.landing__feature:hover {
+  translate: 0 -3px;
+  box-shadow: var(--shadow-lg);
 }
 
 .landing__feature h3 { margin: 0.6rem 0 0.3rem; font-size: 1rem; }
@@ -1225,6 +1402,37 @@ select.input {
   padding: 1.25rem;
   border-top: 1px solid var(--color-border);
   font-size: 0.85rem;
+}
+
+/* Landing entrance animations: hero children rise in, staggered. */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.landing__hero > * { animation: rise 0.6s ease both; }
+
+.landing__hero > :nth-child(1) { animation-delay: 0.05s; }
+.landing__hero > :nth-child(2) { animation-delay: 0.15s; }
+.landing__hero > :nth-child(3) { animation-delay: 0.25s; }
+.landing__hero > :nth-child(4) { animation-delay: 0.35s; }
+.landing__hero > :nth-child(5) { animation-delay: 0.45s; }
+
+/* Motion sensitivity: show everything immediately, animate nothing. */
+@media (prefers-reduced-motion: reduce) {
+  .landing__hero > * { animation: none; }
+  .landing__feature {
+    opacity: 1;
+    transition: none;
+  }
+  .landing__feature--shown { animation: none; }
 }
 
 /* ---------- Auth pages ---------- */

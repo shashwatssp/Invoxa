@@ -148,11 +148,12 @@ The invoice list can be narrowed with server-side filters, combinable with the f
 ### Due soon & monthly trend
 
 - **Due soon (pinned)** — the dashboard pins a card with every unpaid invoice due within 5 days, account-wide, including overdue ones (badged), sorted by date. Nothing due? It says so.
-- **Monthly spend trend** — a six-month bar chart of invoiced spend per month on the dashboard; hover a bar for the exact total and invoice count.
+- **Monthly spend trend** — a bar chart of invoiced spend per month on the dashboard with a 6M/12M range toggle; hover a bar for the exact total and invoice count.
+- **Spend by category** — a horizontal-bars breakdown of total spend per expense category, biggest first; uncategorized invoices roll up as "other".
 
 ### Vendors view
 
-A dedicated page aggregates spend per vendor: total spend, invoice count, and the last invoice date, sorted by biggest spend — and one **Share via WhatsApp** button sends the summary as a pre-filled WhatsApp message (handy for accountants and partners).
+A dedicated page aggregates spend per vendor: total spend, invoice count, and the last invoice date, sorted by biggest spend. One **Share** button opens a menu to send the summary as a pre-filled WhatsApp text message or as a PDF file; each vendor row also keeps its one-tap share.
 
 ### Managing invoices
 
@@ -161,6 +162,9 @@ A dedicated page aggregates spend per vendor: total spend, invoice count, and th
 - **Edit fields anywhere** — invoice number, dates, and amounts can be corrected right on the invoice detail page (not only via the review queue); every edit is logged as a correction, marks the field human-verified, and updates dashboards and exports immediately.
 - **Delete an invoice** — a wrong upload can be removed permanently from its detail page (with a confirmation), including the stored receipt file and any review-queue entries.
 - **Self-healing review queue** — flagged invoices always have a pending review item; if an entry was lost or resolved before status-syncing existed, it is re-enqueued automatically so the dashboard "needs review" count and the queue always agree.
+- **Line items** — the individual items extracted from a receipt are stored with the invoice and listed with amounts on the detail page.
+- **Vendor memory** — a receipt with no GSTIN from a vendor you have used before is matched by (case-insensitive) name and inherits that vendor's last-used expense category.
+- **Long lists stay fast** — the dashboard renders the first 100 invoices with a "Show more" button and a showing-x-of-y caption instead of drawing thousands of rows at once.
 - **Clean 404s** — unknown URLs show a proper "page not found" screen instead of silently redirecting.
 
 ### Account, sessions & appearance
@@ -168,6 +172,8 @@ A dedicated page aggregates spend per vendor: total spend, invoice count, and th
 - **Account tab** — profile and session controls on every device: the bottom tab bar on phones includes Account, so signing out is always one tap away (the desktop nav keeps its Sign out button too).
 - **Dark mode** — System, Light, and Dark themes in Account. System follows the device setting (and live-tracks changes); the choice is remembered across sessions and applied before first paint, so there's no flash.
 - **Installable app (PWA)** — Invoxa can be installed to a phone's home screen ("Add to home screen" / install prompt): standalone window, Invoxa icons, offline app-shell fallback.
+- **Share into Invoxa** — when installed, Invoxa appears in the phone's share sheet: share a PDF or photo from WhatsApp, Photos, or Files and it lands on the Upload page, ready to process.
+- **Export my data** — one button in Account downloads everything in the account (profile, invoices, folders, review history) as a single JSON file.
 - **Terms & Privacy** — plain-English pages linked from the landing footer, including an honest description of what is (and isn't) sent to AI processing.
 
 ### AI features

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from postgrest.exceptions import APIError as PostgrestAPIError
 
+from app.api.account import router as account_router
 from app.api.auth import router as auth_router
 from app.api.digest import router as digest_router
 from app.api.export import router as export_router
@@ -51,6 +52,7 @@ app.include_router(export_router)
 app.include_router(digest_router)
 app.include_router(vendors_router)
 app.include_router(reports_router)
+app.include_router(account_router)
 
 
 @app.exception_handler(PostgrestAPIError)

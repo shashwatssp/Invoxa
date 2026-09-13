@@ -11,6 +11,10 @@ import {
 } from '@/lib/api';
 import { formatINR } from '@/lib/format';
 
+/** Cache the service worker stores files shared from the OS share sheet in. */
+const SHARED_FILE_CACHE = 'invoxa-shared-file-v1';
+const SHARED_FILE_KEY = 'shared-file';
+
 type FilePhase = 'queued' | 'uploading' | 'done' | 'flagged' | 'error';
 
 interface UploadItem {
@@ -73,13 +77,16 @@ export function Upload() {
     void loadFolders();
   }, [loadFolders]);
 
+
   const patch = useCallback((key: string, changes: Partial<UploadItem>) => {
     setItems((current) => current.map((it) => (it.key === key ? { ...it, ...changes } : it)));
   }, []);
 
   const onFiles = useCallback(
     async (files: File[]) => {
-      const accepted = files.filter((f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+      const isPdf = (f: File) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+      const isPhoto = (f: File) => f.type.startsWith('image/') || /\.(jpe?g|png)$/i.test(f.name.toLowerCase());
+      const accepted = files.filter((f) => isPdf(f) || isPhoto(f));
       const rejected = files.length - accepted.length;
       const queued: UploadItem[] = accepted.map((file, i) => ({
         key: `${Date.now()}-${i}-${file.name}`,
@@ -88,7 +95,7 @@ export function Upload() {
       }));
       setItems((current) => [...queued, ...current]);
       if (rejected > 0) {
-        // Non-PDFs are ignored silently except for a note on the first item.
+        // Unsupported types are ignored silently except for a note on the first item.
       }
       for (const item of queued) {
         patch(item.key, { phase: 'uploading' });
@@ -107,6 +114,31 @@ export function Upload() {
     },
     [patch, folderId],
   );
+
+  // A file shared from the OS share sheet (WhatsApp, Photos, Files...) is
+  // dropped into the cache by the service worker; pick it up once on mount.
+  const onFilesRef = useRef(onFiles);
+  useEffect(() => {
+    onFilesRef.current = onFiles;
+  }, [onFiles]);
+  useEffect(() => {
+    const readSharedFile = async () => {
+      if (!('caches' in window)) return;
+      try {
+        const cache = await caches.open(SHARED_FILE_CACHE);
+        const stored = await cache.match(SHARED_FILE_KEY);
+        if (!stored) return;
+        await cache.delete(SHARED_FILE_KEY);
+        const blob = await stored.blob();
+        const name = stored.headers.get('x-invoxa-filename') || 'shared-invoice.pdf';
+        const type = blob.type || 'application/octet-stream';
+        onFilesRef.current([new File([blob], name, { type })]);
+      } catch {
+        // Shared-file pickup is best-effort; manual upload always works.
+      }
+    };
+    void readSharedFile();
+  }, []);
 
   /**
    * Destination changed: every completed upload from this session is
@@ -193,7 +225,7 @@ export function Upload() {
       <header className="page-head">
         <div>
           <h1>Upload invoices</h1>
-          <p className="muted">PDFs are read, understood, and organised automatically.</p>
+          <p className="muted">PDFs and photos are read, understood, and organised automatically.</p>
         </div>
       </header>
 
@@ -206,7 +238,7 @@ export function Upload() {
           onDragLeave={handleDragLeave}
           role="button"
           tabIndex={0}
-          aria-label="Upload invoice PDFs"
+          aria-label="Upload invoice PDFs or photos"
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault();
@@ -221,7 +253,7 @@ export function Upload() {
               <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
             </svg>
           </div>
-          <strong>Drag &amp; drop PDFs here</strong>
+          <strong>Drag &amp; drop PDFs or photos here</strong>
           <div className="muted" style={{ marginTop: '0.25rem' }}>
             or tap to choose, multiple files supported
           </div>
@@ -229,7 +261,7 @@ export function Upload() {
         <input
           ref={inputRef}
           type="file"
-          accept="application/pdf,.pdf"
+          accept="application/pdf,.pdf,image/jpeg,image/png,.jpg,.jpeg,.png"
           multiple
           style={{ display: 'none' }}
           onChange={handlePick}

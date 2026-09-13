@@ -236,6 +236,25 @@ export function InvoiceDetail() {
         )}
       </section>
 
+      {invoice.line_items && invoice.line_items.length > 0 && (
+        <section className="card">
+          <div className="card__header">
+            <h2>Line items</h2>
+            <span className="muted" style={{ fontSize: '0.85rem' }}>
+              {invoice.line_items.length} item{invoice.line_items.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <ul className="line-items">
+            {invoice.line_items.map((item, index) => (
+              <li key={index} className="line-items__row">
+                <span className="line-items__desc">{item.description}</span>
+                <span className="line-items__amount">{formatINR(item.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div style={{ marginTop: '1rem', display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
         <Link className="button button--secondary" to="/app">Back to dashboard</Link>
         <button

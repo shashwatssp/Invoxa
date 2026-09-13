@@ -191,6 +191,7 @@ def test_upload_into_folder(accounts, store, monkeypatch):
 
     class FakeResult:
         vendor_gstin = None
+        vendor_name = None
         needs_review = False
         overall_confidence = 0.9
         invoice_number = None
@@ -198,6 +199,7 @@ def test_upload_into_folder(accounts, store, monkeypatch):
         tax_amount = None
         total_amount = None
         due_date = None
+        line_items = None
 
     monkeypatch.setattr(inv_api, "extract_from_invoice", lambda b, iid: FakeResult())
     monkeypatch.setattr(inv_api, "save_extraction_result", lambda iid, r: None)

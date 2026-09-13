@@ -7,7 +7,7 @@ GET /api/reports/monthly-spend - Total invoiced amount per month
 from fastapi import APIRouter, Depends, Query
 
 from app.auth.dependencies import get_current_user
-from app.database import monthly_spend
+from app.database import category_spend, monthly_spend
 
 router = APIRouter(prefix="/api")
 
@@ -18,3 +18,9 @@ async def reports_monthly_spend(
 ):
     """Monthly spend trend for the dashboard chart."""
     return monthly_spend(user["id"], months=months)
+
+
+@router.get("/reports/category-spend")
+async def reports_category_spend(user=Depends(get_current_user)):
+    """Total spend per expense category, biggest first (for the dashboard bars)."""
+    return category_spend(user["id"])
