@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   fetchInvoices,
@@ -30,25 +30,15 @@ export function Vendors() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
-  const shareMenuRef = useRef<HTMLDivElement | null>(null);
 
-  // Close the share menu on Escape or on any click outside it.
+  // Close the share dialog on Escape; clicks on the dimmed backdrop close too.
   useEffect(() => {
     if (!shareMenuOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setShareMenuOpen(false);
     };
-    const onClick = (e: MouseEvent) => {
-      if (shareMenuRef.current && !shareMenuRef.current.contains(e.target as Node)) {
-        setShareMenuOpen(false);
-      }
-    };
     window.addEventListener('keydown', onKey);
-    window.addEventListener('mousedown', onClick);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('mousedown', onClick);
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [shareMenuOpen]);
 
   useEffect(() => {
@@ -103,7 +93,7 @@ export function Vendors() {
           <p className="muted">Where the money goes, vendor by vendor.</p>
         </div>
         {!loading && summary.length > 0 && (
-          <div className="share-menu" ref={shareMenuRef}>
+          <div className="share-menu">
             <button
               type="button"
               className="button button--secondary"
@@ -114,28 +104,35 @@ export function Vendors() {
               Share ▾
             </button>
             {shareMenuOpen && (
-              <div className="share-menu__popover" role="menu" aria-label="Share the vendor summary">
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setShareMenuOpen(false);
-                    shareViaWhatsApp();
-                  }}
+              <div className="viewer-backdrop share-backdrop" onClick={() => setShareMenuOpen(false)}>
+                <div
+                  className="share-menu__popover"
+                  role="menu"
+                  aria-label="Share the vendor summary"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  Text message
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setShareMenuOpen(false);
-                    void shareAsPdf();
-                  }}
-                  disabled={sharing}
-                >
-                  {sharing ? 'Preparing…' : 'PDF file'}
-                </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setShareMenuOpen(false);
+                      shareViaWhatsApp();
+                    }}
+                  >
+                    Text message
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setShareMenuOpen(false);
+                      void shareAsPdf();
+                    }}
+                    disabled={sharing}
+                  >
+                    {sharing ? 'Preparing…' : 'PDF file'}
+                  </button>
+                </div>
               </div>
             )}
           </div>

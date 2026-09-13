@@ -180,11 +180,23 @@ button, input, select, textarea {
     padding: 1.5rem 1.25rem calc(var(--tabbar-height) + 2rem + env(safe-area-inset-bottom));
   }
 
+  /* The shell (not the page) is the scroll container and the tab bar is
+     sticky-bottom inside it, so the bar is ALWAYS on screen - no matter
+     how the phone/PWA viewport or its toolbars behave. */
+  .app-shell {
+    height: 100vh;
+    height: 100dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
   .app-tabbar {
-    position: fixed;
+    position: sticky;
     bottom: 0;
     left: 0;
     right: 0;
+    margin-top: auto; /* pin to the bottom even when content is short */
     z-index: 50;
     display: flex;
     height: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
@@ -721,7 +733,11 @@ select.input {
 }
 
 .catspend__label {
-  flex: 0 0 9.5rem;
+  /* Shrinkable label: long names truncate instead of pushing the row
+     (and the card) past the right edge on narrow phones. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 9.5rem;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -729,8 +745,8 @@ select.input {
 }
 
 .catspend__bar-wrap {
-  flex: 1;
-  min-width: 4rem;
+  flex: 1 1 2rem;
+  min-width: 2rem;
   height: 0.75rem;
   border-radius: 999px;
   background: var(--color-bg);
@@ -783,20 +799,18 @@ select.input {
   font-weight: 600;
 }
 
-/* Share button + popover menu (Vendors page header) */
+/* Share chooser: small centered dialog (dimmed backdrop) so it is always
+   fully visible, on every screen size. */
 
 .share-menu {
-  position: relative;
   display: inline-flex;
 }
 
+.share-backdrop { z-index: 120; }
+
 .share-menu__popover {
-  position: absolute;
-  top: calc(100% + 0.4rem);
-  right: 0;
-  z-index: 95;
-  min-width: 11rem;
-  padding: 0.3rem;
+  width: min(16rem, calc(100vw - 2rem));
+  padding: 0.4rem;
   background: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: 0.6rem;
@@ -1368,6 +1382,11 @@ select.input {
   opacity: 0; /* revealed by the scroll-in animation below */
   transition: translate 0.2s ease, box-shadow 0.2s ease;
 }
+
+/* `.card + .card` adds a stacked-flow margin between cards; inside the
+   grid it pushed cards 2-4 down 1rem, so the first card sat higher than
+   the rest. Grid gap alone must space the cards. */
+.landing__features .card + .card { margin-top: 0; }
 
 .landing__feature--shown {
   animation: rise 0.55s ease both;

@@ -83,6 +83,7 @@ export function Dashboard() {
   const [dueSoon, setDueSoon] = useState<DueSoonItem[]>([]);
   const [trend, setTrend] = useState<MonthlySpendPoint[]>([]);
   const [trendMonths, setTrendMonths] = useState<6 | 12>(6);
+  const [trendLoading, setTrendLoading] = useState(false);
   const [categorySpend, setCategorySpend] = useState<CategorySpendRow[]>([]);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -148,11 +149,15 @@ export function Dashboard() {
 
   /** Swap the trend chart between 6 and 12 months without a full reload. */
   const changeTrendMonths = async (months: 6 | 12) => {
+    if (months === trendMonths || trendLoading) return;
     setTrendMonths(months);
+    setTrendLoading(true);
     try {
       setTrend(await fetchMonthlySpend(months));
     } catch {
       // The chart keeps its previous data; the next full reload retries.
+    } finally {
+      setTrendLoading(false);
     }
   };
 
@@ -345,6 +350,7 @@ export function Dashboard() {
                   type="button"
                   className={`segmented__item${trendMonths === 6 ? ' segmented__item--active' : ''}`}
                   onClick={() => void changeTrendMonths(6)}
+                  disabled={trendLoading}
                 >
                   6M
                 </button>
@@ -352,12 +358,18 @@ export function Dashboard() {
                   type="button"
                   className={`segmented__item${trendMonths === 12 ? ' segmented__item--active' : ''}`}
                   onClick={() => void changeTrendMonths(12)}
+                  disabled={trendLoading}
                 >
                   12M
                 </button>
               </div>
             </div>
-            {trend.length > 0 && (
+            {trendLoading ? (
+              <div className="loading-strip" role="status" aria-live="polite">
+                <span className="spinner" aria-hidden />
+                Loading trend…
+              </div>
+            ) : trend.length > 0 && (
               <div className="trend">
                 {trend.map((point) => {
                   const max = Math.max(...trend.map((p) => p.total), 1);
