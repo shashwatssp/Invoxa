@@ -474,6 +474,7 @@ select.input {
   cursor: pointer;
   background: var(--color-card-alt);
   transition: border-color 0.2s ease, background 0.2s ease;
+  margin-bottom: 1.25rem; /* breathing room before the Folder picker */
 }
 
 .dropzone:hover { border-color: var(--color-primary); }
@@ -596,6 +597,181 @@ select.input {
 .digest-narrative__badge {
   margin-left: 0.5rem;
   vertical-align: middle;
+}
+
+/* Visible reload indicator (folder chips, filters, etc.) */
+
+.loading-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0 0.9rem;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.loading-strip .spinner {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-width: 2px;
+}
+
+/* Pinned due-soon card on the dashboard */
+
+.due-soon__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.due-soon__list li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.92rem;
+}
+
+.due-soon__list li:last-child { border-bottom: none; padding-bottom: 0; }
+
+.due-soon__list a {
+  font-weight: 600;
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+.due-soon__amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.due-soon__date { font-size: 0.8rem; }
+
+/* Monthly spend trend: dependency-free CSS bar chart */
+
+.trend {
+  display: flex;
+  align-items: stretch;
+  gap: 0.6rem;
+  height: 8.5rem;
+  padding-top: 0.25rem;
+}
+
+.trend__col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.trend__bar {
+  width: 100%;
+  max-width: 2.6rem;
+  border-radius: 0.4rem 0.4rem 0 0;
+  background: linear-gradient(180deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 55%, transparent));
+  min-height: 2px;
+  transition: height 0.3s ease;
+}
+
+.trend__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+/* Landing footer legal links */
+
+.landing__footer {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.landing__footer-links {
+  display: inline-flex;
+  gap: 0.9rem;
+}
+
+.landing__footer-links a {
+  color: var(--color-muted);
+}
+
+/* Vendors view: expandable rows + detail list */
+
+.vendors-row { cursor: pointer; }
+
+.vendors-row__toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-fg);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.vendors-row:hover .vendors-row__toggle { color: var(--color-primary); }
+
+.vendors-detail td { background: var(--color-card-alt); white-space: normal; }
+
+.vendors-detail__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0;
+}
+
+.vendors-detail__item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 0.88rem;
+}
+
+.vendors-detail__amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.vendors-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  padding: 0;
+  width: 100%;
+  cursor: pointer;
+  font-size: inherit;
+}
+
+.vendors-card__actions {
+  display: flex;
+  gap: 0.9rem;
+  margin-top: 0.35rem;
+}
+
+/* Skeleton folder chips while the folder list loads */
+
+.pill--skeleton {
+  width: 5.5rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  display: inline-block;
 }
 
 /* Invoice list filter bar (search + status + date range) */

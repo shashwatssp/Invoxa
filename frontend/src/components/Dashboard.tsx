@@ -2,12 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   fetchDigest,
+  fetchDueSoon,
   fetchFolders,
   fetchInvoices,
+  fetchMonthlySpend,
   friendlyError,
   moveInvoicesToFolder,
+  type DueSoonItem,
   type FolderInfo,
   type InvoiceSummary,
+  type MonthlySpendPoint,
 } from '@/lib/api';
 import { formatDate, formatINR, statusTone } from '@/lib/format';
 import { ExportDialog } from '@/components/ExportDialog';
@@ -71,6 +75,8 @@ export function Dashboard() {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [moving, setMoving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [dueSoon, setDueSoon] = useState<DueSoonItem[]>([]);
+  const [trend, setTrend] = useState<MonthlySpendPoint[]>([]);
 
   // Transient confirmation (e.g. after a bulk move).
   useEffect(() => {
@@ -89,7 +95,7 @@ export function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [invoiceList, folderList, digestPayload] = await Promise.all([
+      const [invoiceList, folderList, digestPayload, dueSoonList, trendList] = await Promise.all([
         fetchInvoices(folderScope === 'all' ? null : folderScope, {
           search: search || null,
           status: statusFilter || null,
@@ -98,10 +104,14 @@ export function Dashboard() {
         }),
         fetchFolders(),
         fetchDigest(7),
+        fetchDueSoon(5),
+        fetchMonthlySpend(6),
       ]);
       setInvoices(invoiceList);
       setFolders(folderList);
       setDigest(digestPayload as DigestPayload);
+      setDueSoon(dueSoonList);
+      setTrend(trendList);
       // Drop selections that are no longer visible.
       setSelected((current) => {
         const visible = new Set(invoiceList.map((i) => i.id));
@@ -209,7 +219,7 @@ export function Dashboard() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      {!loading && (
+      {(
         <div className="folder-chips" role="tablist" aria-label="Filter by folder">
           <button
             type="button"
@@ -229,7 +239,11 @@ export function Dashboard() {
           >
             No folder
           </button>
-          {folders.map((folder) => (
+          {loading && folders.length === 0
+            ? [0, 1, 2].map((i) => (
+                <span key={i} className="pill pill--skeleton" aria-hidden />
+              ))
+            : folders.map((folder) => (
             <button
               key={folder.id}
               type="button"
@@ -242,6 +256,13 @@ export function Dashboard() {
               <span className="folder-chip-count">{folder.invoice_count}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {loading && hasLoaded && (
+        <div className="loading-strip" role="status" aria-live="polite">
+          <span className="spinner" aria-hidden />
+          Loading invoices…
         </div>
       )}
 
@@ -260,6 +281,54 @@ export function Dashboard() {
             <Stat label="Needs review" value={stats.counts['flagged'] ?? 0} tone="warning" />
             <Stat label="Total value" value={formatINR(stats.totalAmount)} />
           </div>
+
+          <section className="card due-soon" style={{ marginTop: '1rem' }} aria-label="Due soon">
+            <div className="card__header">
+              <h2>Due soon</h2>
+              <span className="badge badge--medium">Next 5 days + overdue</span>
+            </div>
+            {dueSoon.length === 0 ? (
+              <p className="muted" style={{ margin: 0 }}>
+                Nothing due in the next 5 days. You're all caught up.
+              </p>
+            ) : (
+              <ul className="due-soon__list">
+                {dueSoon.map((item) => (
+                  <li key={item.id}>
+                    <Link to={`/app/invoices/${item.id}`}>
+                      {item.invoice_number ?? '(no number)'}
+                      {item.vendor_name ? ` \u00b7 ${item.vendor_name}` : ''}
+                    </Link>
+                    <span className="due-soon__amount">{formatINR(item.amount)}</span>
+                    {item.overdue && <span className="badge badge--low">Overdue</span>}
+                    <span className="muted due-soon__date">Due {formatDate(item.due_date)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="card" style={{ marginTop: '1rem' }} aria-label="Monthly spend trend">
+            <div className="card__header">
+              <h2>Monthly spend</h2>
+              <span className="muted" style={{ fontSize: '0.85rem' }}>Last 6 months</span>
+            </div>
+            {trend.length > 0 && (
+              <div className="trend">
+                {trend.map((point) => {
+                  const max = Math.max(...trend.map((p) => p.total), 1);
+                  const height = Math.max((point.total / max) * 100, point.total > 0 ? 6 : 2);
+                  const label = new Date(`${point.month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short' });
+                  return (
+                    <div key={point.month} className="trend__col" title={`${label}: ${formatINR(point.total)} (${point.count} invoices)`}>
+                      <div className="trend__bar" style={{ height: `${height}%` }} />
+                      <span className="trend__label">{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
           <section className="card" style={{ marginTop: '1rem' }}>
             <div className="card__header">

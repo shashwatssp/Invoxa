@@ -195,6 +195,7 @@ def test_upload_into_folder(accounts, store, monkeypatch):
         overall_confidence = 0.9
         invoice_number = None
         amount = None
+        tax_amount = None
         total_amount = None
         due_date = None
 

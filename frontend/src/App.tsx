@@ -7,15 +7,18 @@ import { InvoiceDetail } from '@/components/InvoiceDetail';
 import { Landing } from '@/components/Landing';
 import { Login } from '@/components/Login';
 import { NotFound } from '@/components/NotFound';
+import { Privacy, Terms } from '@/components/Legal';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { ReviewQueue } from '@/components/ReviewQueue';
 import { Signup } from '@/components/Signup';
 import { Upload } from '@/components/Upload';
+import { Vendors } from '@/components/Vendors';
 
 const NAV_ITEMS = [
   { to: '/app', label: 'Dashboard', icon: IconHome, end: true },
   { to: '/app/upload', label: 'Upload', icon: IconUpload, end: false },
   { to: '/app/review', label: 'Review', icon: IconCheck, end: false },
+  { to: '/app/vendors', label: 'Vendors', icon: IconUsers, end: false },
   { to: '/app/account', label: 'Account', icon: IconUser, end: false },
 ];
 
@@ -52,6 +55,17 @@ function IconUser() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <circle cx="12" cy="8" r="4" />
       <path d="M4 21c0-4 3.6-6 8-6s8 2 8 6" />
+    </svg>
+  );
+}
+
+function IconUsers() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20c0-3.4 2.9-5 6.5-5s6.5 1.6 6.5 5" />
+      <circle cx="17.5" cy="9" r="2.5" />
+      <path d="M16.5 15.2c2.9.3 5 1.8 5 4.8" />
     </svg>
   );
 }
@@ -98,6 +112,7 @@ function AppShell() {
           <Route path="upload" element={<Upload />} />
           <Route path="review" element={<ReviewQueue />} />
           <Route path="account" element={<Account />} />
+          <Route path="vendors" element={<Vendors />} />
           <Route path="invoices/:invoiceId" element={<InvoiceDetail />} />
           <Route path="*" element={<NotFound inApp />} />
         </Routes>
@@ -127,6 +142,8 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/privacy" element={<Privacy />} />
 
         {/* Protected app (behind the backend health gate) */}
         <Route

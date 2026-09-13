@@ -10,7 +10,9 @@ from app.api.digest import router as digest_router
 from app.api.export import router as export_router
 from app.api.folders import router as folders_router
 from app.api.invoices import router as invoices_router
+from app.api.reports import router as reports_router
 from app.api.review import router as review_router
+from app.api.vendors import router as vendors_router
 from app.supabase import close_client
 
 
@@ -47,6 +49,8 @@ app.include_router(invoices_router)
 app.include_router(review_router)
 app.include_router(export_router)
 app.include_router(digest_router)
+app.include_router(vendors_router)
+app.include_router(reports_router)
 
 
 @app.exception_handler(PostgrestAPIError)

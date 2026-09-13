@@ -78,8 +78,13 @@ AUDIT_LOG.md
 # Local-only operational files (applied manually, not part of the codebase)
 migrations/0002_auth.sql
 migrations/0003_folders.sql
+migrations/0004_category.sql
+migrations/0005_tax.sql
 scripts/apply_0002.py
 scripts/apply_0003.py
+scripts/apply_0004.py
+scripts/apply_0005.py
+scripts/make_pwa_icons.py
 apply_migration.py
 backend/test-assets/
 scripts/text_dump.txt

@@ -3,6 +3,7 @@ Database access layer.
 Uses Supabase service key client for all operations.
 """
 
+import contextlib
 import datetime as dt
 
 from app.models.invoice import Correction, ExtractionResult, InvoiceStatus
@@ -37,7 +38,7 @@ def get_invoices(
     """
     query = _db().table("invoices").select(
         "id, vendor_id, invoice_number, amount, due_date, status, storage_path, "
-        "created_at, created_by, folder_id, vendors(name)"
+        "created_at, created_by, folder_id, category, vendors(name)"
     ).order("created_at", desc=True)
     if user_id:
         query = query.eq("created_by", user_id)
@@ -101,7 +102,7 @@ def fetch_export_rows(
     """
     query = _db().table("invoices").select(
         "id, vendor_id, invoice_number, amount, due_date, status, storage_path, "
-        "created_at, created_by, folder_id, vendors(name)"
+        "created_at, created_by, folder_id, category, vendors(name)"
     ).order("created_at", desc=True)
     if user_id:
         query = query.eq("created_by", user_id)
@@ -138,7 +139,7 @@ def get_invoice(invoice_id: str) -> dict | None:
     """
     inv = _db().table("invoices").select(
         "id, vendor_id, invoice_number, amount, due_date, status, storage_path, "
-        "created_at, created_by"
+        "created_at, created_by, category"
     ).eq("id", invoice_id).limit(1).execute()
 
     if not inv.data:
@@ -300,6 +301,97 @@ def folder_invoice_counts(owner_id: str) -> dict[str, int]:
         if fid:
             counts[fid] = counts.get(fid, 0) + 1
     return counts
+
+
+# --- Reports: due soon, vendors, monthly spend ---
+
+UNPAID_STATUSES = {"pending", "flagged", "auto_approved"}
+
+
+def _parse_due_date(value) -> dt.date | None:
+    """Parse a due date that may arrive as ISO ``YYYY-MM-DD`` or ``DD/MM/YYYY``."""
+    if not value:
+        return None
+    if isinstance(value, dt.datetime):
+        return value.date()
+    text = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return dt.datetime.strptime(text[:10], fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def filter_due_soon(
+    rows: list[dict],
+    days: int = 5,
+    today: dt.date | None = None,
+) -> list[dict]:
+    """Unpaid invoices due within ``days`` (overdue included), soonest first."""
+    today = today or dt.date.today()
+    cutoff = today + dt.timedelta(days=days)
+    due: list[dict] = []
+    for row in rows or []:
+        if (row.get("status") or "pending") not in UNPAID_STATUSES:
+            continue
+        due_date = _parse_due_date(row.get("due_date"))
+        if due_date is None or due_date > cutoff:
+            continue
+        item = dict(row)
+        item["due_date_parsed"] = due_date.isoformat()
+        item["overdue"] = due_date < today
+        due.append(item)
+    due.sort(key=lambda item: item["due_date_parsed"])
+    return due
+
+
+def get_due_soon_rows(user_id: str, days: int = 5) -> list[dict]:
+    """Account-wide unpaid invoices due within ``days`` (overdue included)."""
+    return filter_due_soon(get_invoices(user_id), days=days)
+
+
+def vendor_spend_summary(user_id: str) -> list[dict]:
+    """Per-vendor spend totals for the account, biggest spend first."""
+    totals: dict[str, dict] = {}
+    for row in get_invoices(user_id):
+        name = row.get("vendor_name") or row.get("vendor_id") or "(unknown)"
+        entry = totals.setdefault(name, {"vendor": name, "total_spend": 0.0, "invoice_count": 0})
+        with contextlib.suppress(TypeError, ValueError):
+            entry["total_spend"] += float(row.get("amount") or 0)
+        entry["invoice_count"] += 1
+        last_date = (row.get("created_at") or "")[:10]
+        if last_date > entry.get("last_invoice", ""):
+            entry["last_invoice"] = last_date
+    ranked = sorted(totals.values(), key=lambda item: item["total_spend"], reverse=True)
+    return ranked
+
+
+def monthly_spend(user_id: str, months: int = 6) -> list[dict]:
+    """Total invoiced amount per calendar month for the last ``months`` months.
+
+    Always returns ``months`` entries (oldest first) so the chart has a
+    stable axis; months with no invoices show 0.
+    """
+    today = dt.date.today()
+    buckets: list[dict] = []
+    for offset in range(months - 1, -1, -1):
+        total_months = today.year * 12 + (today.month - 1) - offset
+        year, month = divmod(total_months, 12)
+        buckets.append(
+            {"month": dt.date(year, month + 1, 1).strftime("%Y-%m"), "total": 0.0, "count": 0}
+        )
+    index = {bucket["month"]: bucket for bucket in buckets}
+
+    for row in get_invoices(user_id):
+        created = str(row.get("created_at") or "")[:7]
+        bucket = index.get(created)
+        if not bucket:
+            continue
+        with contextlib.suppress(TypeError, ValueError):
+            bucket["total"] += float(row.get("amount") or 0)
+        bucket["count"] += 1
+    return buckets
 
 
 # --- Users ---

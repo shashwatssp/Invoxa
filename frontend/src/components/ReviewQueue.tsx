@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  deleteInvoice,
   fetchReviewQueue,
   friendlyError,
   resolveReview,
@@ -8,6 +9,7 @@ import {
   type ReviewQueueItem,
 } from '@/lib/api';
 import { formatINR, formatDate, statusTone } from '@/lib/format';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
 import { ReceiptThumb } from '@/components/ReceiptThumb';
 
@@ -50,6 +52,8 @@ export function ReviewQueue() {
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
   // Receipts the approver has opened at least once this session (approve lock).
   const [viewed, setViewed] = useState<Record<string, boolean>>({});
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [viewerInvoiceId, setViewerInvoiceId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -107,6 +111,20 @@ export function ReviewQueue() {
       setError(friendlyError(err, 'Could not approve this item.'));
     } finally {
       setSubmitting((current) => ({ ...current, [reviewId]: false }));
+    }
+  };
+
+  const handleDelete = async (item: ReviewQueueItem) => {
+    setDeleting(true);
+    try {
+      await deleteInvoice(item.invoice_id);
+      removeItem(item.id, (current) => current.filter((i) => i.id !== item.id));
+      setToast('Deleted — the invoice was removed from your account.');
+    } catch (err) {
+      setError(friendlyError(err, 'Could not delete this invoice.'));
+    } finally {
+      setDeleting(false);
+      setConfirmDeleteId(null);
     }
   };
 
@@ -180,7 +198,7 @@ export function ReviewQueue() {
             className="button"
             disabled={submittingItem || !(draft[item.id]?.new_value ?? '').trim()}
           >
-            {submittingItem ? 'Saving…' : 'Save correction'}
+            {submitting ? 'Saving…' : 'Save correction'}
           </button>
           <button
             type="button"
@@ -190,6 +208,15 @@ export function ReviewQueue() {
             title="Approve this receipt"
           >
             Approve as-is
+          </button>
+          <button
+            type="button"
+            className="button button--danger"
+            onClick={() => setConfirmDeleteId(item.id)}
+            disabled={submittingItem}
+            title="Delete this invoice - use for anything uploaded by mistake"
+          >
+            Delete
           </button>
         </div>
         <div className="muted" style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>
@@ -263,6 +290,8 @@ export function ReviewQueue() {
     );
   };
 
+  const pendingDelete = items.find((item) => item.id === confirmDeleteId) ?? null;
+
   return (
     <section>
       {toast && (
@@ -270,6 +299,18 @@ export function ReviewQueue() {
           {toast}
         </div>
       )}
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Delete this invoice?"
+        body={`This permanently removes ${pendingDelete?.invoices?.invoice_number ?? 'the invoice'}, its receipt file, and this review entry. Use it for anything uploaded by mistake - this cannot be undone.`}
+        confirmLabel="Delete permanently"
+        danger
+        busy={deleting}
+        onConfirm={() => {
+          if (pendingDelete) void handleDelete(pendingDelete);
+        }}
+        onClose={() => setConfirmDeleteId(null)}
+      />
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div className="card__header">
           <h2>Review queue</h2>

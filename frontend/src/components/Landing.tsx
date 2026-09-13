@@ -99,6 +99,10 @@ export function Landing() {
 
       <footer className="landing__footer muted">
         Invoxa: your receipts, processed.
+        <span className="landing__footer-links">
+          <Link to="/terms">Terms</Link>
+          <Link to="/privacy">Privacy</Link>
+        </span>
       </footer>
     </div>
   );

@@ -85,6 +85,7 @@ export interface InvoiceSummary {
   storage_path: string;
   created_at: string;
   folder_id: string | null;
+  category?: string | null;
 }
 
 export interface FolderInfo {
@@ -141,6 +142,7 @@ export interface UploadResponse {
   id: string;
   storage_path: string;
   extraction?: ExtractedFields;
+  category?: string | null;
 }
 
 export interface ReviewQueueItem {
@@ -277,6 +279,106 @@ export async function setInvoiceFolder(invoiceId: string, folderId: string | nul
 /** Permanently delete an invoice, its file, and its review-queue entries. */
 export async function deleteInvoice(invoiceId: string): Promise<void> {
   await api.delete(`/api/invoices/${invoiceId}`);
+}
+
+/** Expense categories shared with the backend's Gemini categorizer. */
+export const EXPENSE_CATEGORIES = [
+  'office_supplies',
+  'travel',
+  'software',
+  'utilities',
+  'raw_materials',
+  'marketing',
+  'professional_services',
+  'rent',
+  'food',
+  'logistics',
+  'fuel',
+  'repairs',
+  'other',
+] as const;
+
+/** Set (or clear) the expense category of an invoice. */
+export async function setInvoiceCategory(invoiceId: string, category: string | null): Promise<void> {
+  await api.patch(`/api/invoices/${invoiceId}/category`, { category });
+}
+
+/** Edit one extracted field from the detail page (logged as a correction). */
+export async function updateInvoiceField(
+  invoiceId: string,
+  fieldName: string,
+  newValue: string,
+): Promise<void> {
+  await api.patch(`/api/invoices/${invoiceId}/fields`, { field_name: fieldName, new_value: newValue });
+}
+
+export interface DueSoonItem extends InvoiceSummary {
+  due_date_parsed?: string;
+  overdue?: boolean;
+}
+
+/** Account-wide unpaid invoices due within `days` (overdue included). */
+export async function fetchDueSoon(days = 5): Promise<DueSoonItem[]> {
+  const { data } = await api.get<DueSoonItem[]>('/api/invoices/due-soon', { params: { days } });
+  return data;
+}
+
+export interface VendorSummary {
+  vendor: string;
+  total_spend: number;
+  invoice_count: number;
+  last_invoice?: string;
+}
+
+export async function fetchVendorsSummary(): Promise<VendorSummary[]> {
+  const { data } = await api.get<VendorSummary[]>('/api/vendors/summary');
+  return data;
+}
+
+/** Fetch the vendor spend summary as a PDF blob. */
+export async function fetchVendorSummaryPdf(): Promise<Blob> {
+  const { data } = await api.get<Blob>('/api/vendors/summary.pdf', { responseType: 'blob' });
+  return data;
+}
+
+/**
+ * Share a file via the OS share sheet (WhatsApp, etc.) when supported;
+ * otherwise download it so the user can attach it manually.
+ */
+export async function shareOrDownloadPdf(blob: Blob, filename: string, title: string): Promise<'shared' | 'downloaded'> {
+  const file = new File([blob], filename, { type: 'application/pdf' });
+  const canShareFiles =
+    typeof navigator !== 'undefined' &&
+    'canShare' in navigator &&
+    navigator.canShare?.({ files: [file] }) === true;
+  if (canShareFiles) {
+    await navigator.share({ files: [file], title });
+    return 'shared';
+  }
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  return 'downloaded';
+}
+
+export interface MonthlySpendPoint {
+  month: string;
+  total: number;
+  count: number;
+}
+
+/** Total invoiced amount per month for the last `months` months. */
+export async function fetchMonthlySpend(months = 6): Promise<MonthlySpendPoint[]> {
+  const { data } = await api.get<MonthlySpendPoint[]>('/api/reports/monthly-spend', { params: { months } });
+  return data;
+}
+
+/** Download the month-by-month GST summary CSV. */
+export async function downloadGstSummaryCsv(filters: ExportFilters = {}): Promise<void> {
+  await downloadBlob(`/api/export/gst-summary${exportQuery(filters)}`, 'invoxa_gst_summary.csv');
 }
 
 /** Move several invoices into one folder (null = unfile). */

@@ -15,3 +15,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// PWA: register the service worker so the app is installable on phones.
+// Dev mode skips it (vite serves unbundled; no SW churn while editing).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // A failed registration must never break the app - it just means
+      // no offline shell / install prompt.
+    });
+  });
+}

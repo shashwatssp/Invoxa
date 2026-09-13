@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   downloadCsv,
+  downloadGstSummaryCsv,
   downloadStatementPdf,
   downloadTallyXml,
   downloadXlsx,
@@ -18,13 +19,14 @@ import {
   type PeriodPreset,
 } from '@/lib/period';
 
-type ExportFormat = 'csv' | 'xlsx' | 'tally' | 'pdf';
+type ExportFormat = 'csv' | 'xlsx' | 'tally' | 'pdf' | 'gst';
 
 const FORMATS: { key: ExportFormat; label: string }[] = [
   { key: 'csv', label: 'CSV' },
   { key: 'xlsx', label: 'Excel' },
   { key: 'tally', label: 'Tally XML' },
   { key: 'pdf', label: 'PDF' },
+  { key: 'gst', label: 'GST summary' },
 ];
 
 const PRESETS: { key: PeriodPreset; label: string }[] = [
@@ -115,6 +117,7 @@ export function ExportDialog({ open, onClose, folders, selectedIds }: ExportDial
       if (format === 'csv') await downloadCsv(filters);
       else if (format === 'xlsx') await downloadXlsx(filters);
       else if (format === 'tally') await downloadTallyXml(filters);
+      else if (format === 'gst') await downloadGstSummaryCsv(filters);
       else await downloadStatementPdf(filters);
       onClose();
     } catch (err) {

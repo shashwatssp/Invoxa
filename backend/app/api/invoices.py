@@ -6,12 +6,15 @@ import datetime as dt
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from pydantic import BaseModel
 
 from app.auth.dependencies import get_current_user
+from app.categorization.gemini import CATEGORIES, ai_category
 from app.database import (
     add_to_review_queue,
     create_invoice,
     delete_invoice,
+    get_due_soon_rows,
     get_folder,
     get_invoice,
     get_invoices,
@@ -23,6 +26,7 @@ from app.database import (
 )
 from app.extraction.pipeline import extract_from_invoice
 from app.models.invoice import Correction, ExtractionResult, InvoiceStatus
+from app.review.corrections import edit_invoice_field
 from app.supabase import delete_invoice_file, download_invoice, upload_invoice
 
 router = APIRouter(prefix="/api")
@@ -59,6 +63,8 @@ def _write_back_canonical_fields(invoice_id: str, result: ExtractionResult) -> N
     canonical_amount = result.total_amount or result.amount
     if canonical_amount is not None:
         fields["amount"] = float(canonical_amount)
+    if result.tax_amount is not None:
+        fields["tax_amount"] = float(result.tax_amount)
     due_date = _iso_date(result.due_date)
     if due_date:
         fields["due_date"] = due_date
@@ -90,6 +96,14 @@ async def list_invoices(
         date_to=date_to,
         search=search,
     )
+
+
+@router.get("/invoices/due-soon")
+async def invoices_due_soon(
+    days: int = Query(5, ge=1, le=90), user=Depends(get_current_user)
+):
+    """Account-wide unpaid invoices due within ``days`` (overdue included)."""
+    return get_due_soon_rows(user["id"], days=days)
 
 
 @router.get("/invoices/{invoice_id}/file")
@@ -189,6 +203,21 @@ async def upload_and_register(
         if vendor_id:
             _db_update_vendor(invoice_id, vendor_id)
 
+    # Auto expense categorization (Gemini, optional). Never blocks the
+    # upload: any failure simply leaves the invoice uncategorized.
+    category = None
+    try:
+        category = ai_category(
+            vendor_name=result.vendor_name,
+            invoice_number=result.invoice_number,
+            total_amount=result.total_amount or result.amount,
+            line_items=result.line_items,
+        )
+    except Exception:  # categorization must never fail an upload
+        category = None
+    if category:
+        update_invoice_fields(invoice_id, {"category": category})
+
     # Update status and review queue with the REAL causes, not a generic label
     if result.needs_review:
         update_invoice_status(invoice_id, InvoiceStatus.FLAGGED)
@@ -199,7 +228,12 @@ async def upload_and_register(
     else:
         update_invoice_status(invoice_id, InvoiceStatus.AUTO_APPROVED)
 
-    return {"id": invoice_id, "storage_path": storage_path, "extraction": result}
+    return {
+        "id": invoice_id,
+        "storage_path": storage_path,
+        "extraction": result,
+        "category": category,
+    }
 
 
 @router.post("/invoices")
@@ -209,6 +243,66 @@ async def register_invoice(
     """Register a new invoice after file uploaded to Storage."""
     invoice_id = create_invoice(storage_path, vendor_id, created_by=user["id"])
     return {"id": invoice_id, "storage_path": storage_path}
+
+
+class CategoryUpdate(BaseModel):
+    category: str | None = None
+
+
+@router.patch("/invoices/{invoice_id}/category")
+async def set_invoice_category(
+    invoice_id: str, payload: CategoryUpdate, user=Depends(get_current_user)
+):
+    """Set (or clear with null) the expense category of an owned invoice."""
+    _load_owned_invoice(invoice_id, user)
+    category = payload.category
+    if category is not None:
+        category = category.strip()
+        if category and category not in CATEGORIES:
+            raise HTTPException(status_code=422, detail="Unknown category.")
+        category = category or None
+    update_invoice_fields(invoice_id, {"category": category})
+    return {"id": invoice_id, "category": category}
+
+
+class InvoiceFieldEdit(BaseModel):
+    field_name: str
+    new_value: str
+
+
+_AMOUNT_FIELDS = {"amount", "tax_amount", "total_amount"}
+
+
+@router.patch("/invoices/{invoice_id}/fields")
+async def edit_invoice_fields_endpoint(
+    invoice_id: str, payload: InvoiceFieldEdit, user=Depends(get_current_user)
+):
+    """Edit one extracted field from the detail page (owned invoices only).
+
+    The edit is logged in ``corrections`` (audit + accuracy tracking) and
+    canonical ``invoices`` columns are updated so dashboards and exports
+    immediately reflect the human-verified value.
+    """
+    _load_owned_invoice(invoice_id, user)
+    field = payload.field_name.strip()
+    value = payload.new_value.strip()
+
+    if field in _AMOUNT_FIELDS:
+        try:
+            value = str(float(value.replace(",", "")))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Amount must be a number.") from None
+    elif field == "due_date":
+        normalized = _iso_date(value)
+        if not normalized:
+            raise HTTPException(status_code=422, detail="Date must be DD/MM/YYYY or YYYY-MM-DD.")
+        value = normalized
+
+    try:
+        correction = edit_invoice_field(invoice_id, field, value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return correction.model_dump()
 
 
 @router.delete("/invoices/{invoice_id}")

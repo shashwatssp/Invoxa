@@ -129,10 +129,11 @@ A two-service deployment on Vercel, backed by Supabase:
 
 One dialog, every format, any slice of the books — modal on desktop, bottom sheet on mobile, with a live preview ("42 invoices · ₹1,23,456") before download:
 
-- **CSV** — Tally/Zoho-compatible column layout.
+- **CSV** — Tally/Zoho-compatible column layout (now with the expense category).
 - **Excel (XLSX)** — native import into Zoho Books, Excel, and Google Sheets.
 - **Tally XML** — Purchase vouchers ready for Gateway of Tally > Import > XML.
 - **PDF statement** — clean printable A4 statement (per-page running totals) for printing or emailing to a CA.
+- **GST summary** — month-by-month CSV (invoices, taxable value, tax collected) ready for the GST portal or your CA.
 
 Every export accepts the same optional scope: a **period** (last 7 or 14 days, this or last month, any custom number of days/weeks/months, or everything), a **status** (auto-approved, reviewed, or all), a **folder**, or a hand-picked **selection of invoices** from the dashboard. All exports stay scoped to the logged-in account.
 
@@ -142,12 +143,22 @@ Uploads can be filed into flat, per-account folders (per client, project, or sho
 
 ### Dashboard search & filters
 
-The invoice list can be narrowed with server-side filters, combinable with the folder chips: a free-text **search** (case-insensitive substring over invoice number and vendor name), a **status** filter (pending / needs review / auto-approved / reviewed / exported), and an upload-**date range** (with friendly "Choose date" hints when empty). Filters re-run the query without wiping the current view, and a Clear button resets them in one tap.
+The invoice list can be narrowed with server-side filters, combinable with the folder chips: a free-text **search** (case-insensitive substring over invoice number and vendor name), a **status** filter (pending / needs review / auto-approved / reviewed / exported), and an upload-**date range** (with friendly "Choose date" hints when empty). Filters re-run the query without wiping the current view (with a visible "Loading invoices…" indicator), and a Clear button resets them in one tap.
+
+### Due soon & monthly trend
+
+- **Due soon (pinned)** — the dashboard pins a card with every unpaid invoice due within 5 days, account-wide, including overdue ones (badged), sorted by date. Nothing due? It says so.
+- **Monthly spend trend** — a six-month bar chart of invoiced spend per month on the dashboard; hover a bar for the exact total and invoice count.
+
+### Vendors view
+
+A dedicated page aggregates spend per vendor: total spend, invoice count, and the last invoice date, sorted by biggest spend — and one **Share via WhatsApp** button sends the summary as a pre-filled WhatsApp message (handy for accountants and partners).
 
 ### Managing invoices
 
 - **Upload Done markers** — every uploaded file shows a green "Done · Added to <folder>" marker (or "No folder"), so you always know the upload landed where you intended. Changing the folder after uploading re-files the batch and confirms with a toast.
 - **Move to folder in bulk** — tick invoices on the dashboard and file them into any folder in one action.
+- **Edit fields anywhere** — invoice number, dates, and amounts can be corrected right on the invoice detail page (not only via the review queue); every edit is logged as a correction, marks the field human-verified, and updates dashboards and exports immediately.
 - **Delete an invoice** — a wrong upload can be removed permanently from its detail page (with a confirmation), including the stored receipt file and any review-queue entries.
 - **Self-healing review queue** — flagged invoices always have a pending review item; if an entry was lost or resolved before status-syncing existed, it is re-enqueued automatically so the dashboard "needs review" count and the queue always agree.
 - **Clean 404s** — unknown URLs show a proper "page not found" screen instead of silently redirecting.
@@ -156,12 +167,15 @@ The invoice list can be narrowed with server-side filters, combinable with the f
 
 - **Account tab** — profile and session controls on every device: the bottom tab bar on phones includes Account, so signing out is always one tap away (the desktop nav keeps its Sign out button too).
 - **Dark mode** — System, Light, and Dark themes in Account. System follows the device setting (and live-tracks changes); the choice is remembered across sessions and applied before first paint, so there's no flash.
+- **Installable app (PWA)** — Invoxa can be installed to a phone's home screen ("Add to home screen" / install prompt): standalone window, Invoxa icons, offline app-shell fallback.
+- **Terms & Privacy** — plain-English pages linked from the landing footer, including an honest description of what is (and isn't) sent to AI processing.
 
 ### AI features
 
-Gemini (when `GEMINI_API_KEY` is configured) powers two assists, both strictly server-side and fully optional — every feature degrades to a deterministic non-AI path when the key is missing or the API fails:
+Gemini (when `GEMINI_API_KEY` is configured) powers three assists, all strictly server-side and fully optional — every feature degrades to a deterministic non-AI path when the key is missing or the API fails:
 
 - **Vision fallback for scans and photos.** Image-only PDFs (scans) and photo uploads that produce no extractable text are rendered to bounded-size JPEG page images and sent to Gemini's vision model for extraction, instead of dead-ending as unreadable documents. Low-confidence text extractions also get page images attached for better accuracy.
+- **Auto expense categorization.** After extraction, Gemini suggests one expense category (office supplies, travel, software, rent, fuel, …) from a fixed list; it's saved to the invoice, fully editable from the detail page, carried into CSV exports, and any failure simply leaves the invoice uncategorized.
 - **AI weekly digest narrative.** On top of the deterministic summary lines (counts, totals, top vendors, due soon), the digest can include a short 2–3 sentence plain-English narrative of the week's activity. It uses only the real numbers from your account — no invented figures — and is silently omitted whenever Gemini is unavailable.
 
 The API key never leaves the backend: it is read from `.env` server-side, never exposed to the frontend bundle or any API response.
@@ -187,7 +201,7 @@ GEMINI_API_KEY=...          # optional, enables the vision fallback
 DATABASE_URL=...            # optional, for CLI migrations
 ```
 
-Apply migrations in your Supabase SQL editor: `migrations/0001_init.sql`, then `migrations/0002_auth.sql` and `migrations/0003_folders.sql` (kept out of the repo — see `.gitignore`; apply with `python scripts/apply_0003.py` or by hand).
+Apply migrations in your Supabase SQL editor: `migrations/0001_init.sql`, then `0002_auth.sql`, `0003_folders.sql`, `0004_category.sql` and `0005_tax.sql` (0002+ are kept out of the repo — see `.gitignore`; apply with `python scripts/apply_0004.py`, `python scripts/apply_0005.py`, or by hand).
 
 ### Frontend
 
@@ -200,7 +214,7 @@ npm run dev      # http://localhost:5173, API proxied to :8000
 ### Tests
 
 ```bash
-cd backend && python -m pytest tests -q          # 220+ unit/integration tests
+cd backend && python -m pytest tests -q          # 235+ unit/integration tests
 python -m ruff check backend                     # lint
 cd frontend && npm run typecheck && npm run build
 ```

@@ -27,6 +27,18 @@ INVOICE_LEVEL_FIELDS = {
     "due_date",
 }
 
+# Fields a user may edit from the invoice detail page (no review item
+# needed). Vendor name/GSTIN are excluded on purpose: renaming a vendor
+# touches the shared vendors table and needs its own flow.
+EDITABLE_FIELDS = {
+    "invoice_number",
+    "invoice_date",
+    "due_date",
+    "amount",
+    "tax_amount",
+    "total_amount",
+}
+
 def _fetch_review_row(client: Any, review_id: str) -> dict[str, Any]:
     """
     Read the review_queue row for ``review_id``.  Raises LookupError if the
@@ -150,6 +162,38 @@ def apply_correction_to_invoice(correction: Correction) -> dict[str, Any]:
 
     # Return the updated extraction_fields row for the caller.
     return _fetch_existing_field(client, correction.invoice_id, correction.field_name) or {}
+
+
+def edit_invoice_field(invoice_id: str, field_name: str, new_value: str) -> Correction:
+    """Edit one field from the invoice detail page (no review item needed).
+
+    Same guarantees as a review correction: logged in ``corrections``,
+    written to the ``extraction_fields`` row (created when missing) with
+    confidence 1.0, and canonical ``invoices`` columns patched.
+    """
+    field = (field_name or "").strip()
+    if field not in EDITABLE_FIELDS:
+        raise ValueError(f"Field '{field_name}' is not editable")
+    value = str(new_value).strip()
+    if not value:
+        raise ValueError("new_value must be a non-empty string")
+
+    client = get_client()
+    previous = _fetch_existing_field(client, invoice_id, field)
+    correction = Correction(
+        invoice_id=invoice_id,
+        field_name=field,
+        old_value=previous["raw_value"] if previous else None,
+        new_value=value,
+    )
+    client.table("corrections").insert({
+        "invoice_id": correction.invoice_id,
+        "field_name": correction.field_name,
+        "old_value": correction.old_value,
+        "new_value": correction.new_value,
+    }).execute()
+    apply_correction_to_invoice(correction)
+    return correction
 
 
 def has_pending_review(review_id: str) -> bool:

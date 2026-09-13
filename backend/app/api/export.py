@@ -20,6 +20,7 @@ from fastapi.responses import Response, StreamingResponse
 from app.auth.dependencies import get_current_user
 from app.database import fetch_export_rows
 from app.export.csv_export import build_csv, preview_csv_rows
+from app.export.gst_summary import build_gst_summary
 from app.export.pdf_statement import build_pdf_statement
 from app.export.tally_xml import build_tally_xml
 from app.export.xlsx_export import build_xlsx
@@ -153,6 +154,29 @@ async def export_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/export/gst-summary")
+async def export_gst_summary(
+    status: str | None = Query(None),
+    date_from: dt.date | None = Query(None, alias="from"),
+    date_to: dt.date | None = Query(None, alias="to"),
+    folder_id: str | None = None,
+    ids: str | None = None,
+    user=Depends(get_current_user),
+):
+    """Generate a month-by-month GST summary CSV (taxable value + tax)."""
+    _validate_range(date_from, date_to)
+    csv_content = build_gst_summary(
+        status_filter=status, user_id=user["id"],
+        date_from=date_from, date_to=date_to,
+        folder_id=folder_id, ids=_parse_ids(ids),
+    )
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=invoxa_gst_summary.csv"},
     )
 
 
