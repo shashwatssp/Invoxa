@@ -1,6 +1,7 @@
 import { NavLink, Route, Routes, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { Account } from '@/components/Account';
+import { Ask } from '@/components/Ask';
 import { Dashboard } from '@/components/Dashboard';
 import { HealthGate } from '@/components/HealthGate';
 import { InvoiceDetail } from '@/components/InvoiceDetail';
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { to: '/app', label: 'Dashboard', icon: IconHome, end: true },
   { to: '/app/upload', label: 'Upload', icon: IconUpload, end: false },
   { to: '/app/review', label: 'Review', icon: IconCheck, end: false },
+  { to: '/app/ask', label: 'Ask AI', icon: IconSparkles, end: false },
   { to: '/app/vendors', label: 'Vendors', icon: IconUsers, end: false },
   { to: '/app/account', label: 'Account', icon: IconUser, end: false },
 ];
@@ -55,6 +57,14 @@ function IconUser() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <circle cx="12" cy="8" r="4" />
       <path d="M4 21c0-4 3.6-6 8-6s8 2 8 6" />
+    </svg>
+  );
+}
+
+function IconSparkles() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M9.9 15.5a2 2 0 0 0-1.4-1.4L2.4 12.5a.5.5 0 0 1 0-1l6.1-1.6a2 2 0 0 0 1.4-1.4l1.6-6.1a.5.5 0 0 1 1 0l1.6 6.1a2 2 0 0 0 1.4 1.4l6.1 1.6a.5.5 0 0 1 0 1l-6.1 1.6a2 2 0 0 0-1.4 1.4l-1.6 6.1a.5.5 0 0 1-1 0z" />
     </svg>
   );
 }
@@ -111,6 +121,7 @@ function AppShell() {
           <Route index element={<Dashboard />} />
           <Route path="upload" element={<Upload />} />
           <Route path="review" element={<ReviewQueue />} />
+          <Route path="ask" element={<Ask />} />
           <Route path="account" element={<Account />} />
           <Route path="vendors" element={<Vendors />} />
           <Route path="invoices/:invoiceId" element={<InvoiceDetail />} />

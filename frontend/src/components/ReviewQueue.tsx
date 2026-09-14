@@ -10,6 +10,7 @@ import {
 import { formatINR, formatDate, statusTone } from '@/lib/format';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CorrectionSheet } from '@/components/CorrectionSheet';
+import { FlagExplanation } from '@/components/FlagExplanation';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
 import { ReceiptThumb } from '@/components/ReceiptThumb';
 
@@ -289,6 +290,7 @@ export function ReviewQueue() {
                   </span>
                 </div>
                 <p className="muted" style={{ marginTop: 0 }}>{selectedItem.reason}</p>
+                <FlagExplanation invoiceId={selectedItem.invoice_id} />
                 <button
                   type="button"
                   className="review-detail__preview"

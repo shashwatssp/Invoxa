@@ -477,6 +477,24 @@ export async function fetchDigest(days: number): Promise<Record<string, unknown>
   return data;
 }
 
+export interface AskResponse {
+  answer: string;
+  tool_calls: { tool: string; args: Record<string, unknown> }[];
+  model_calls: number;
+}
+
+/** Ask the bounded read-only agent a question about the account's data. */
+export async function askInvoxa(question: string): Promise<AskResponse> {
+  const { data } = await api.post<AskResponse>('/api/agent/ask', { question });
+  return data;
+}
+
+/** One-call plain-English explanation of why an invoice was flagged. */
+export async function explainFlag(invoiceId: string): Promise<{ explanation: string | null }> {
+  const { data } = await api.post<{ explanation: string | null }>(`/api/agent/explain/${invoiceId}`);
+  return data;
+}
+
 export function buildCsvDownloadUrl(status?: string): string {
   const trimmed = baseURL.replace(/\/$/, '');
   const params = status ? `?status=${encodeURIComponent(status)}` : '';
