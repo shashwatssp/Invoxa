@@ -226,6 +226,18 @@ def save_correction(invoice_id: str, correction: Correction) -> None:
     }).execute()
 
 
+def get_recent_corrections(limit: int = 5) -> list[dict]:
+    """Most recent human corrections (field name + old/new values).
+
+    Feeds the extraction fallback's few-shot hints: the pipeline learns
+    the field formats and values this account has corrected before.
+    """
+    result = _db().table("corrections").select(
+        "field_name, old_value, new_value, created_at"
+    ).order("created_at", desc=True).limit(limit).execute()
+    return result.data or []
+
+
 # --- Vendors ---
 
 def get_or_create_vendor(gstin: str | None = None, name: str | None = None) -> str | None:

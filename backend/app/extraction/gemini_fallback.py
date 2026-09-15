@@ -14,10 +14,34 @@ import json
 import httpx
 
 from app.config import GEMINI_API_KEY, GEMINI_MODEL
+from app.database import get_recent_corrections
 from app.extraction.ocr import render_page_images
 from app.models.invoice import ExtractionResult
 
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+
+
+def _correction_hints() -> str:
+    """Few-shot hints learned from this account's recent corrections.
+
+    Every human fix teaches the fallback how this account's invoices
+    really look (formats, spellings, quirks). Empty when there is no
+    correction history or the database is briefly unavailable.
+    """
+    try:
+        recent = get_recent_corrections(limit=5)
+    except Exception:
+        return ""
+    if not recent:
+        return ""
+    lines = [
+        f"- {c.get('field_name')}: {c.get('old_value') or '(empty)'} -> {c.get('new_value')}"
+        for c in recent
+    ]
+    return (
+        "\nRecent human corrections on this account's invoices — follow these "
+        "patterns for field formats and values:\n" + "\n".join(lines) + "\n"
+    )
 
 
 def _build_prompt(text: str) -> str:
@@ -25,7 +49,7 @@ def _build_prompt(text: str) -> str:
     Build the Gemini prompt for invoice field extraction.
 
     The wording adapts to what is attached: plain text, page images,
-    or both.
+    or both, plus any correction hints learned from the account.
     """
     source = (
         "invoice text and the attached page images"
@@ -52,7 +76,7 @@ Rules:
 - Amounts must be numbers, not strings
 - GSTIN must be exactly 15 characters
 - Be very precise with numbers and dates
-
+{_correction_hints()}
 Invoice text:
 {text[:5000]}
 """

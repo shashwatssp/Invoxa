@@ -495,6 +495,41 @@ export async function explainFlag(invoiceId: string): Promise<{ explanation: str
   return data;
 }
 
+export interface ChaseDraft {
+  vendor: string;
+  invoice_count: number;
+  overdue_count: number;
+  total_due: number;
+  invoice_numbers: (string | null)[];
+  message: string;
+  whatsapp_url: string;
+  source: 'gemini' | 'template';
+}
+
+export interface ChaseResponse {
+  drafts: ChaseDraft[];
+  vendors_found: number;
+  note?: string;
+}
+
+/** Draft (never send) WhatsApp payment reminders for due/overdue invoices. */
+export async function draftPaymentChase(): Promise<ChaseResponse> {
+  const { data } = await api.post<ChaseResponse>('/api/agent/payment-chase');
+  return data;
+}
+
+/** Email the account's weekly digest via server-side SMTP. */
+export async function sendDigestEmail(
+  toEmail: string,
+  days = 7,
+): Promise<{ sent: boolean; reason?: string }> {
+  const { data } = await api.post<{ sent: boolean; reason?: string }>('/api/digest/email', {
+    to_email: toEmail,
+    days,
+  });
+  return data;
+}
+
 export function buildCsvDownloadUrl(status?: string): string {
   const trimmed = baseURL.replace(/\/$/, '');
   const params = status ? `?status=${encodeURIComponent(status)}` : '';

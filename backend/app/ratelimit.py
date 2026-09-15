@@ -23,6 +23,7 @@ from fastapi import HTTPException
 logger = logging.getLogger(__name__)
 
 _WINDOW_SECONDS = 3600
+_DEFAULT_LIMITS = {"email": 10}  # per hour; everything else defaults to 60
 _buckets: dict[tuple[str, str], deque[float]] = {}
 _lock = threading.Lock()
 
@@ -36,7 +37,9 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _limit_for(bucket: str) -> int:
-    return _env_int(f"RATE_LIMIT_{bucket.upper()}_PER_HOUR", 60)
+    return _env_int(
+        f"RATE_LIMIT_{bucket.upper()}_PER_HOUR", _DEFAULT_LIMITS.get(bucket, 60)
+    )
 
 
 def _prune_stale(window_start: float) -> None:

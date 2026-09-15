@@ -1,5 +1,11 @@
 import { useState, type FormEvent } from 'react';
-import { askInvoxa, friendlyError, type AskResponse } from '@/lib/api';
+import {
+  askInvoxa,
+  draftPaymentChase,
+  friendlyError,
+  type AskResponse,
+  type ChaseResponse,
+} from '@/lib/api';
 
 /**
  * Ask Invoxa: natural-language questions answered by the bounded agent.
@@ -11,6 +17,9 @@ export function Ask() {
   const [result, setResult] = useState<AskResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [chase, setChase] = useState<ChaseResponse | null>(null);
+  const [chaseLoading, setChaseLoading] = useState(false);
+  const [chaseError, setChaseError] = useState<string | null>(null);
 
   const handleAsk = async (event: FormEvent) => {
     event.preventDefault();
@@ -25,6 +34,19 @@ export function Ask() {
       setError(friendlyError(err, 'Could not get an answer. Please try again.'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleChase = async () => {
+    if (chaseLoading) return;
+    setChaseLoading(true);
+    setChaseError(null);
+    try {
+      setChase(await draftPaymentChase());
+    } catch (err) {
+      setChaseError(friendlyError(err, 'Could not prepare the drafts. Please try again.'));
+    } finally {
+      setChaseLoading(false);
     }
   };
 
@@ -82,6 +104,43 @@ export function Ask() {
           )}
         </section>
       )}
+
+      <section className="card" style={{ marginTop: '1.5rem' }}>
+        <div className="card__header">
+          <h2>Payment reminder drafts</h2>
+          <button type="button" className="button button--secondary" onClick={handleChase} disabled={chaseLoading}>
+            {chaseLoading ? 'Preparing…' : 'Draft reminders'}
+          </button>
+        </div>
+        <p className="muted" style={{ margin: 0, fontSize: '0.9rem' }}>
+          For unpaid invoices due in the next 30 days. Drafts only — nothing is
+          sent until you tap a button.
+        </p>
+        {chaseError && <div className="error-banner" style={{ marginTop: '0.75rem' }}>{chaseError}</div>}
+        {chase?.drafts.length === 0 && !chaseError && (
+          <p className="muted" style={{ marginTop: '0.75rem' }}>Nothing is due right now. All caught up.</p>
+        )}
+        {chase?.drafts.map((draft) => (
+          <div key={draft.vendor} className="card card--alt" style={{ marginTop: '0.75rem' }}>
+            <div className="card__header" style={{ marginBottom: '0.5rem' }}>
+              <strong>{draft.vendor}</strong>
+              <span className="muted" style={{ fontSize: '0.8rem' }}>
+                {draft.invoice_count} invoice{draft.invoice_count === 1 ? '' : 's'}
+                {draft.overdue_count > 0 ? ` · ${draft.overdue_count} overdue` : ''}
+              </span>
+            </div>
+            <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{draft.message}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+              <a className="button button--secondary" href={draft.whatsapp_url} target="_blank" rel="noopener noreferrer">
+                Open WhatsApp
+              </a>
+              <span className="muted" style={{ fontSize: '0.8rem' }}>
+                {draft.source === 'gemini' ? 'AI-drafted' : 'template draft'}
+              </span>
+            </div>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }
