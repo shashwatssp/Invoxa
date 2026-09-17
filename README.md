@@ -190,9 +190,9 @@ The **Ask Invoxa** page answers natural-language questions about your own data: 
 - **Deterministic where it matters.** "What do I owe?" is answered by the `payables_by_vendor` tool — real unpaid totals grouped per vendor with overdue counts, not model arithmetic.
 - **Answers cite their sources.** Each answer shows which tools fed it ("Based on: due_soon, vendor_spend").
 
-### AI features in the pipeline
+### Built-in AI features (all live today)
 
-Gemini (when `GEMINI_API_KEY` is configured) also powers three pipeline assists, all strictly server-side and fully optional — every feature degrades to a deterministic non-AI path when the key is missing or the API fails:
+Gemini (when `GEMINI_API_KEY` is configured) powers every AI assist below — all already built and shipping in the app, all strictly server-side, and all fully optional: every feature degrades to a deterministic non-AI path when the key is missing or the API fails:
 
 - **Vision fallback for scans and photos.** Image-only PDFs (scans) and photo uploads that produce no extractable text are rendered to bounded-size JPEG page images and sent to Gemini's vision model for extraction, instead of dead-ending as unreadable documents. Low-confidence text extractions also get page images attached for better accuracy.
 - **Auto expense categorization.** After extraction, Gemini suggests one expense category (office supplies, travel, software, rent, fuel, …) from a fixed list; it's saved to the invoice, fully editable from the detail page, carried into CSV exports, and any failure simply leaves the invoice uncategorized.
