@@ -6,7 +6,7 @@
  * passes everything else straight to the network. API calls are never cached
  * - invoice data must always be fresh.
  */
-const CACHE = 'invoxa-shell-v1';
+const CACHE = 'invoxa-shell-v2'; // v2: redesigned spark-dot app icons
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 // Files shared into the app from the OS share sheet (WhatsApp, Photos,
