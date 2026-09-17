@@ -52,19 +52,30 @@ User Browser → Vercel Frontend → Vercel Backend (serverless FastAPI) → (OC
 | #15    | Sep 14     | ✅ Done     | 795910d  | Upload file-type gate, per-account rate limits, IST digest clock, ESLint in CI |
 | #16    | Sep 15     | ✅ Done     | d2c40f9  | Ask Invoxa agent: bounded read-only tool-use loop, chat answers, AI flag explanations |
 | #17    | Sep 16     | ✅ Done     | 77a57d6  | Payment-chase drafts, correction-learning extraction, weekly digest email |
+| #18    | Sep 17     | ✅ Done     | ec5f79b  | Agent retry/backoff + `payables_by_vendor` tool, digest email switched to one-tap mailto (SMTP removed), tab bar edge padding, AI-call count removed from the UI |
 
 ### Remote vs Local Status
 
-- **Verified Sep 17**: GitHub `origin/master` and local `master` were in
-  sync at `a06e2d3` (all work through Sep 13 is on GitHub)
-- **Local** (`master`): ahead of the remote by the Sep 14–16 feature
-  commits until the next `git push origin master`
+- **Sep 14–16 feature commits** verified pushed to `origin/master`
+- **Sep 17 fix batch**: pushed as part of the same routine
 
 ### Test Suite
 
 ```
-310 passed, 1 skipped (backend only, Sep 17, 2026)
+306 passed, 1 skipped (backend only, Sep 17, 2026)
 ```
+
+Update (Sep 17, 2026, fix batch): user-reported polish and resilience
+tasks — the bottom tab bar insets horizontally on curved-edge screens,
+the Ask Invoxa answer no longer shows an AI-call count, transient
+Gemini failures (429/5xx/timeouts) are retried once with backoff and
+surface a clear rate-limit message, "what do I owe" questions get a
+deterministic `payables_by_vendor` tool (unpaid totals per vendor with
+overdue counts), and the weekly digest email no longer needs SMTP: the
+Account page opens the user's email app via `mailto:` with the digest
+prefilled. Test count settled at 306 (emailer tests removed, retry and
+payables tests added); backend lint, frontend lint, type check, build
+and the full suite are all green.
 
 Update (Sep 17, 2026): production hardening plus the AI/agent layer
 shipped — per-account rate limits on AI-costly endpoints, an upload
@@ -74,9 +85,9 @@ whitelisted account-scoped queries with a daily Gemini budget and
 audit trail), AI flag explanations in the review queue, payment-chase
 reminder drafts (draft-only, prefilled wa.me links, never auto-sent),
 correction-learning few-shot hints in the Gemini fallback, and the
-weekly digest over email (stdlib SMTP). Tests grew from 240 to 310;
-backend lint, frontend lint, type check, build and the full suite are
-all green.
+weekly digest over email (stdlib SMTP at the time; now mailto). Tests
+grew from 240 to 310; backend lint, frontend lint, type check, build
+and the full suite were all green.
 
 Update (Sep 13, 2026): Phases 2–3 shipped on Vercel — auto expense
 categorization (Gemini), editable fields with audit, vendors view with
@@ -155,7 +166,6 @@ Test breakdown by file:
 | `/review/{id}/resolve`         | POST   | Mark as reviewed/auto-approved    |
 | `/export/csv`                  | GET    | Generate Tally/Zoho CSV           |
 | `/digest`                      | GET    | Weekly plain-English summary      |
-| `/digest/email`                | POST   | Email the digest via SMTP         |
 | `/agent/ask`                   | POST   | Natural-language Q&A (bounded read-only agent) |
 | `/agent/payment-chase`         | POST   | Draft WhatsApp payment reminders (never auto-sent) |
 | `/agent/explain/{invoice_id}`  | POST   | Plain-English explanation of a flag |
@@ -247,8 +257,7 @@ Three main functions:
 - **Rate limiting** (`app/ratelimit.py`) — in-memory sliding window,
   per-account, applied to upload, re-extract and agent endpoints;
   protects the Gemini free-tier quota from loops and abuse. Limits are
-  configurable via `RATE_LIMIT_<BUCKET>_PER_HOUR` (default 60/hour,
-  email 10/hour).
+  configurable via `RATE_LIMIT_<BUCKET>_PER_HOUR` (default 60/hour).
 - **Upload file-type gate** — `/api/invoices/upload` rejects anything
   that is not a PDF or image (PNG/JPG/WebP) before any bytes are read
   or stored; generic MIME types from PWA share-target clients are
@@ -279,10 +288,10 @@ Safety rails (non-negotiable, tested):
 
 **Surfaces:**
 - **Ask Invoxa** (`POST /api/agent/ask`, `/app/ask` page) — natural-
-  language questions answered from 8 whitelisted queries: account
-  overview, due soon, vendor spend, category spend, monthly spend,
-  flagged invoices, invoice search, GST tax summary. Intent-based —
-  deliberately not raw text-to-SQL.
+  language questions answered from 9 whitelisted queries: account
+  overview, payables by vendor, due soon, vendor spend, category
+  spend, monthly spend, flagged invoices, invoice search, GST tax
+  summary. Intent-based — deliberately not raw text-to-SQL.
 - **Flag explanations** (`POST /api/agent/explain/{id}`) — one call
   per request in the review queue explaining what likely went wrong
   and what to verify; UI falls back to the raw reason when AI is off.
@@ -294,13 +303,15 @@ Safety rails (non-negotiable, tested):
   become few-shot hints in the Gemini fallback prompt, so extraction
   accuracy compounds with every fix.
 
-### 3.12 Weekly digest email (Sep 16, 2026)
+### 3.12 Weekly digest email (mailto, since Sep 17)
 
-`app/digest/emailer.py` — `POST /api/digest/email` sends the account's
-digest via stdlib `smtplib` (Gmail app password or any SMTP server;
-`SMTP_HOST` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_PORT`, optional
-`DIGEST_FROM`). Not configured → the endpoint reports it cleanly;
-never raises. Rate limited to 10/hour.
+No SMTP anywhere. The Account page takes an email address, fetches
+`GET /api/digest` for the 7-day window, and opens the user's email app
+(Gmail on mobile) via a `mailto:` link with the subject and the digest
+body (summary lines + AI narrative, when present) prefilled. Sending
+stays manual — no `smtplib`, no app passwords, no server-side email
+configuration to maintain. The earlier stdlib-SMTP endpoint and
+`app/digest/emailer.py` were removed.
 
 ### 3.13 Infrastructure
 
@@ -360,7 +371,7 @@ Dev: pytest, pytest-cov, ruff
 1. **Structured error responses** — all FastAPI endpoints should return proper HTTP status codes + error messages
 2. **`app/main.py` lifespan** — proper Supabase client initialization + cleanup
 3. **Logging** — add structured logging (not `print`) with levels; use `structlog` or stdlib `logging`
-4. **Retry logic** — Supabase client should have retry for transient failures
+4. ~~**Retry logic**~~ — the agent's Gemini calls retry once with backoff on transient failures (Sep 17); Supabase client retry remains open
 5. **Health endpoint** — include more diagnostics (DB connectivity, Supabase status)
 
 ### Sprint #17: Security & Hardening

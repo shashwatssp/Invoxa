@@ -181,15 +181,31 @@ A dedicated page aggregates spend per vendor: total spend, invoice count, and th
 - **Export my data** — one button in Account downloads everything in the account (profile, invoices, folders, review history) as a single JSON file.
 - **Terms & Privacy** — plain-English pages linked from the landing footer, including an honest description of what is (and isn't) sent to AI processing.
 
-### AI features
+### Ask Invoxa — your books, in plain English
 
-Gemini (when `GEMINI_API_KEY` is configured) powers three assists, all strictly server-side and fully optional — every feature degrades to a deterministic non-AI path when the key is missing or the API fails:
+The **Ask Invoxa** page answers natural-language questions about your own data: "What all money do I owe to others?", "Which vendors owe me money this week?", "How much GST did I pay last month?"
+
+- **Bounded read-only agent.** Questions run through a Gemini function-calling loop over a whitelist of account-scoped, read-only queries — account overview, payables by vendor, due soon, vendor/category/monthly spend, flagged invoices, invoice search, and GST tax summary. The agent can never modify, send, or delete anything; there is no raw text-to-SQL, only intent-based tool calls.
+- **Hard safety rails.** Max 8 tool rounds and 10 model calls per run, a daily Gemini budget (default 240 calls/day, resetting midnight IST) with an append-only audit trail, and per-account rate limits on AI-costly endpoints. Transient Gemini failures (429/5xx/timeouts) are retried once with backoff; if the free tier is rate-limited you get a clear, honest message instead of an error.
+- **Deterministic where it matters.** "What do I owe?" is answered by the `payables_by_vendor` tool — real unpaid totals grouped per vendor with overdue counts, not model arithmetic.
+- **Answers cite their sources.** Each answer shows which tools fed it ("Based on: due_soon, vendor_spend").
+
+### AI features in the pipeline
+
+Gemini (when `GEMINI_API_KEY` is configured) also powers three pipeline assists, all strictly server-side and fully optional — every feature degrades to a deterministic non-AI path when the key is missing or the API fails:
 
 - **Vision fallback for scans and photos.** Image-only PDFs (scans) and photo uploads that produce no extractable text are rendered to bounded-size JPEG page images and sent to Gemini's vision model for extraction, instead of dead-ending as unreadable documents. Low-confidence text extractions also get page images attached for better accuracy.
 - **Auto expense categorization.** After extraction, Gemini suggests one expense category (office supplies, travel, software, rent, fuel, …) from a fixed list; it's saved to the invoice, fully editable from the detail page, carried into CSV exports, and any failure simply leaves the invoice uncategorized.
 - **AI weekly digest narrative.** On top of the deterministic summary lines (counts, totals, top vendors, due soon), the digest can include a short 2–3 sentence plain-English narrative of the week's activity. It uses only the real numbers from your account — no invented figures — and is silently omitted whenever Gemini is unavailable.
+- **Correction-learning extraction.** The last 5 human corrections feed the Gemini fallback prompt as few-shot hints, so extraction accuracy compounds with every fix you make.
+- **AI flag explanations.** In the review queue, one tap asks the AI why an invoice was flagged — what likely went wrong and what to verify — in 2–3 plain-English sentences.
+- **Payment reminder drafts.** Due and overdue invoices are grouped per vendor with an AI-drafted (or template) WhatsApp reminder and a prefilled `wa.me` link. Draft-only by design: nothing is ever sent until you tap the button.
 
 The API key never leaves the backend: it is read from `.env` server-side, never exposed to the frontend bundle or any API response.
+
+### Weekly digest, emailed the simple way
+
+The dashboard shows a plain-English weekly summary (what was processed, what needs review, what's due soon). On the **Account** page, type an email address and tap **Open email app**: your email app — Gmail on mobile — opens with the digest already written in the body, and you press send. No SMTP server, no app passwords, no configuration anywhere; sending stays a human action.
 
 ## Developer quickstart
 
@@ -212,7 +228,7 @@ GEMINI_API_KEY=...          # optional, enables the vision fallback
 DATABASE_URL=...            # optional, for CLI migrations
 ```
 
-Apply migrations in your Supabase SQL editor: `migrations/0001_init.sql`, then `0002_auth.sql`, `0003_folders.sql`, `0004_category.sql`, `0005_tax.sql` and `0006_line_items.sql` (0002+ are kept out of the repo — see `.gitignore`; apply with `python scripts/apply_0004.py`, `python scripts/apply_0005.py`, `python scripts/apply_0006.py`, or by hand).
+Apply migrations in your Supabase SQL editor: `migrations/0001_init.sql`, then `0002_auth.sql`, `0003_folders.sql`, `0004_category.sql`, `0005_tax.sql` and `0006_line_items.sql` (0002+ are kept out of the repo — see `.gitignore`; apply with `python scripts/apply_0004.py`, `python scripts/apply_0005.py`, `python scripts/apply_0006.py`, or by hand). `0007_agent_audit.sql` (same local-only convention) adds the agent's daily-budget and audit-trail tables; the agent degrades gracefully until it's applied.
 
 ### Frontend
 
@@ -225,9 +241,9 @@ npm run dev      # http://localhost:5173, API proxied to :8000
 ### Tests
 
 ```bash
-cd backend && python -m pytest tests -q          # 240+ unit/integration tests
+cd backend && python -m pytest tests -q          # 300+ unit/integration tests
 python -m ruff check backend                     # lint
-cd frontend && npm run typecheck && npm run build
+cd frontend && npm run lint && npm run typecheck && npm run build
 ```
 
 ### End-to-end validation

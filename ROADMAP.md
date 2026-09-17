@@ -1,6 +1,6 @@
 # Invoxa — Product Roadmap
 
-> Living roadmap. Last aligned to repo state: Sep 17, 2026 (`progress.md`, 310 tests passing).
+> Living roadmap. Last aligned to repo state: Sep 17, 2026 (`progress.md`, 306 tests passing).
 > Owner: Shashwat (solo build). Constraint: zero third-party spend — Gemini API key + free-tier infra only (Supabase, Vercel).
 
 ---
@@ -13,11 +13,11 @@ Read directly from the repo, not aspirational:
 - **Extraction pipeline**: OCR-first (PyMuPDF → Tesseract fallback), regex rules per layout family, 5-strategy GSTIN finder, arithmetic validation, confidence scoring, Gemini 2.5 Flash vision fallback below 0.7 confidence — now with correction-learning few-shot hints from the account's own review history.
 - **Validation**: GSTIN mod-36 checksum, 6 anomaly types, duplicate detection.
 - **Review loop**: flagged-item queue, correction logging with full audit trail, human approval required before anything is "final."
-- **AI & agent layer (new)**: bounded read-only "Ask Invoxa" agent (natural-language Q&A over whitelisted account-scoped queries), AI flag explanations in the review queue, payment-chase reminder drafts (draft-only, prefilled `wa.me` links, never auto-sent), weekly digest email (stdlib SMTP).
-- **Hardening (new)**: per-account sliding-window rate limits on AI-costly endpoints, upload file-type gate (PDF/images only), digest clock on IST, stdlib logging setup, ESLint as a blocking CI gate.
+- **AI & agent layer (new)**: bounded read-only "Ask Invoxa" agent (natural-language Q&A over whitelisted account-scoped queries), AI flag explanations in the review queue, payment-chase reminder drafts (draft-only, prefilled `wa.me` links, never auto-sent), weekly digest email via one-tap `mailto:` (no SMTP anywhere).
+- **Hardening (new)**: per-account sliding-window rate limits on AI-costly endpoints, upload file-type gate (PDF/images only), digest clock on IST, stdlib logging setup, ESLint as a blocking CI gate, agent Gemini calls retried once with backoff on transient 429/5xx/timeouts.
 - **Exports**: CSV (Tally/Zoho column layout), XLSX, Tally XML, GST summary.
 - **Extras already shipped**: Gemini-based auto expense categorization, editable fields with audit, vendor view with WhatsApp/PDF share, due-soon card, 6M/12M trend + category spend, GST summary export, PWA with share-target ingestion, line items, vendor memory, data export, pagination, dark mode.
-- **Tests**: 310 passing, 1 skipped. CI runs backend lint + frontend lint + frontend type-check + build + gitleaks secret scan — all blocking.
+- **Tests**: 306 passing, 1 skipped. CI runs backend lint + frontend lint + frontend type-check + build + gitleaks secret scan — all blocking.
 - **Known gaps (open)**: no frontend unit tests yet (Vitest + RTL), Supabase client still a module-level singleton (lifespan managed), agent budget/audit tables (migration `0007`) must be applied in Supabase before the daily accounting is active (the agent degrades gracefully without them).
 
 ---
@@ -40,11 +40,11 @@ Shipped: rate limiting on upload/extract/agent endpoints (`RATE_LIMIT_<BUCKET>_P
 ## Phase 1b — AI & Agent Foundation — ✅ DONE (Sep 15–16)
 
 - **Bounded tool-use loop** (`app/agent/loop.py`): max 8 tool rounds / 10 model calls per run, daily Gemini budget (~240 calls/day, resets midnight IST, tracked in `gemini_usage`), append-only `agent_audit` trail. Any AI failure degrades gracefully — the rest of the product is never touched.
-- **Ask Invoxa** (`/app/ask`): natural-language questions over 8 whitelisted, account-scoped, read-only queries (overview, due soon, vendor/category/monthly spend, flagged, search, GST summary). Intent-based function calling — deliberately not raw text-to-SQL.
+- **Ask Invoxa** (`/app/ask`): natural-language questions over 9 whitelisted, account-scoped, read-only queries (overview, payables by vendor, due soon, vendor/category/monthly spend, flagged, search, GST summary). Intent-based function calling — deliberately not raw text-to-SQL. "What do I owe?" is answered deterministically by the `payables_by_vendor` tool (unpaid totals per vendor, overdue counts), not by model arithmetic.
 - **Flag explanations** (review queue): one call per request explaining what to verify before approving.
 - **Payment-chase drafts**: due/overdue grouped by vendor, drafted WhatsApp reminder + prefilled `wa.me` link. Draft-only; template fallback when AI is off.
 - **Correction-learning**: recent human corrections feed the fallback prompt as few-shot hints.
-- **Digest email** (`POST /api/digest/email`): stdlib SMTP, Gmail app password compatible, reports cleanly when unconfigured, rate limited to 10/hour.
+- **Digest email, mailto edition** (Sep 17): the Account page fetches the 7-day digest and opens the user's email app (Gmail on mobile) with subject and body prefilled — sending stays manual and no SMTP config exists anywhere. The stdlib-SMTP endpoint and `app/digest/emailer.py` were removed after user feedback.
 
 ---
 
@@ -113,7 +113,7 @@ reconciliation_matches: id, invoice_id, gst_record_id, match_status,
 1. **Batch invoice processing** — upload many at once
 2. **Multi-language OCR** — Hindi already supported; Tamil/Telugu/Kannada next, prioritized by where early users are
 3. **GST reconciliation agent** — once Phase 2 ships, the existing agent loop gets reconciliation as just another tool
-4. **Automated weekly digest schedule** — the email mechanism exists; add a scheduled trigger
+4. **Automated weekly digest schedule** — currently a manual mailto (no SMTP); a scheduled trigger would need a free scheduler and is deferred until wanted
 
 ---
 
