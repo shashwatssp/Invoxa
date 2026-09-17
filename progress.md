@@ -1,6 +1,6 @@
 # Invoxa — Progress & Development Plan
 
-> For internal tracking and review by domain experts. Last updated: Sep 13, 2026.
+> For internal tracking and review by domain experts. Last updated: Sep 17, 2026.
 
 ---
 
@@ -30,7 +30,7 @@ User Browser → Vercel Frontend → Vercel Backend (serverless FastAPI) → (OC
 
 ---
 
-## 2. Current Build Status (Sep 13, 2026)
+## 2. Current Build Status (Sep 17, 2026)
 
 ### Sprint Completion
 
@@ -48,18 +48,35 @@ User Browser → Vercel Frontend → Vercel Backend (serverless FastAPI) → (OC
 | #11    | Sep 4     | ✅ Done (local) | b5e6f74 | Weekly digest generation |
 | #12    | Sep 5     | ✅ Done (local) | 3638d97 | Secret scanning + CI |
 | #13    | Sep 6     | ✅ Done (local) | 47a0996 | Docs polish + troubleshooting |
-| #14    | Sep 7     | ✅ Done (local) | 726cf11 | Close-out commits |
+| #14    | Sep 7      | ✅ Done (local) | 726cf11 | Close-out commits |
+| #15    | Sep 14     | ✅ Done     | 795910d  | Upload file-type gate, per-account rate limits, IST digest clock, ESLint in CI |
+| #16    | Sep 15     | ✅ Done     | d2c40f9  | Ask Invoxa agent: bounded read-only tool-use loop, chat answers, AI flag explanations |
+| #17    | Sep 16     | ✅ Done     | 77a57d6  | Payment-chase drafts, correction-learning extraction, weekly digest email |
 
 ### Remote vs Local Status
 
-- **Remote** (`origin/main`): Pushed through Aug 29 — Sprints #1, #2, #3, #5 (`cb664ac`)
-- **Local** (`master`): All 14 sprints committed + iterative improvements (Sep 4–7 commits are local-only per developer preference)
+- **Verified Sep 17**: GitHub `origin/master` and local `master` were in
+  sync at `a06e2d3` (all work through Sep 13 is on GitHub)
+- **Local** (`master`): ahead of the remote by the Sep 14–16 feature
+  commits until the next `git push origin master`
 
 ### Test Suite
 
 ```
-240 passed, 1 skipped (backend only, Sep 13, 2026)
+310 passed, 1 skipped (backend only, Sep 17, 2026)
 ```
+
+Update (Sep 17, 2026): production hardening plus the AI/agent layer
+shipped — per-account rate limits on AI-costly endpoints, an upload
+file-type gate, the digest clock moved to IST, ESLint as a CI gate,
+the bounded read-only "Ask Invoxa" agent (tool-use loop over
+whitelisted account-scoped queries with a daily Gemini budget and
+audit trail), AI flag explanations in the review queue, payment-chase
+reminder drafts (draft-only, prefilled wa.me links, never auto-sent),
+correction-learning few-shot hints in the Gemini fallback, and the
+weekly digest over email (stdlib SMTP). Tests grew from 240 to 310;
+backend lint, frontend lint, type check, build and the full suite are
+all green.
 
 Update (Sep 13, 2026): Phases 2–3 shipped on Vercel — auto expense
 categorization (Gemini), editable fields with audit, vendors view with
@@ -138,6 +155,10 @@ Test breakdown by file:
 | `/review/{id}/resolve`         | POST   | Mark as reviewed/auto-approved    |
 | `/export/csv`                  | GET    | Generate Tally/Zoho CSV           |
 | `/digest`                      | GET    | Weekly plain-English summary      |
+| `/digest/email`                | POST   | Email the digest via SMTP         |
+| `/agent/ask`                   | POST   | Natural-language Q&A (bounded read-only agent) |
+| `/agent/payment-chase`         | POST   | Draft WhatsApp payment reminders (never auto-sent) |
+| `/agent/explain/{invoice_id}`  | POST   | Plain-English explanation of a flag |
 
 **Key files:**
 - `main.py` — FastAPI app bootstrap, health endpoint, lifespan
@@ -221,7 +242,67 @@ Three main functions:
 - `index.css` — Hand-rolled CSS variables (no Tailwind dependency installed)
 - `vite.config.ts` — Vite 5 + React plugin, `@` alias, dev server with proxy config
 
-### 3.10 Infrastructure
+### 3.10 Hardening (Sep 14, 2026)
+
+- **Rate limiting** (`app/ratelimit.py`) — in-memory sliding window,
+  per-account, applied to upload, re-extract and agent endpoints;
+  protects the Gemini free-tier quota from loops and abuse. Limits are
+  configurable via `RATE_LIMIT_<BUCKET>_PER_HOUR` (default 60/hour,
+  email 10/hour).
+- **Upload file-type gate** — `/api/invoices/upload` rejects anything
+  that is not a PDF or image (PNG/JPG/WebP) before any bytes are read
+  or stored; generic MIME types from PWA share-target clients are
+  accepted when the extension is valid.
+- **IST digest clock** — digest window boundaries, due-soon cutoffs
+  and `generated_at` now follow IST (fixed UTC+05:30 offset, no
+  timezone database needed) instead of the server's UTC clock.
+- **Logging** (`app/logging_setup.py`) — stdlib logging configured at
+  startup, `LOG_LEVEL`-controlled; upload rejections and rate-limit
+  hits are logged with context.
+- **ESLint** — flat config + `npm run lint` in the frontend CI job
+  (lint-only, zero runtime effect).
+
+### 3.11 Agent & AI layer (Sep 15–16, 2026)
+
+**Module:** `app/agent/` — a bounded Gemini function-calling loop over
+the same raw-`httpx` `generateContent` pattern as the rest of the AI
+code (no new dependencies).
+
+Safety rails (non-negotiable, tested):
+- max 8 tool rounds and 10 model calls per run — the loop always
+  terminates;
+- daily Gemini budget (default 240 calls/day, resets midnight IST)
+  tracked in `gemini_usage` (migration `0007_agent_audit.sql`);
+- append-only `agent_audit` trail for every run/event;
+- tools are whitelisted, read-only and account-scoped — the agent
+  cannot modify, send, or delete anything by construction.
+
+**Surfaces:**
+- **Ask Invoxa** (`POST /api/agent/ask`, `/app/ask` page) — natural-
+  language questions answered from 8 whitelisted queries: account
+  overview, due soon, vendor spend, category spend, monthly spend,
+  flagged invoices, invoice search, GST tax summary. Intent-based —
+  deliberately not raw text-to-SQL.
+- **Flag explanations** (`POST /api/agent/explain/{id}`) — one call
+  per request in the review queue explaining what likely went wrong
+  and what to verify; UI falls back to the raw reason when AI is off.
+- **Payment-chase drafts** (`POST /api/agent/payment-chase`) —
+  due-soon/overdue invoices grouped by vendor with a drafted WhatsApp
+  reminder and prefilled `wa.me` link. Draft-only: nothing is ever
+  sent automatically; deterministic template when AI is unavailable.
+- **Correction-learning extraction** — the last 5 human corrections
+  become few-shot hints in the Gemini fallback prompt, so extraction
+  accuracy compounds with every fix.
+
+### 3.12 Weekly digest email (Sep 16, 2026)
+
+`app/digest/emailer.py` — `POST /api/digest/email` sends the account's
+digest via stdlib `smtplib` (Gmail app password or any SMTP server;
+`SMTP_HOST` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_PORT`, optional
+`DIGEST_FROM`). Not configured → the endpoint reports it cleanly;
+never raises. Rate limited to 10/hour.
+
+### 3.13 Infrastructure
 
 - `vercel.json` — Vercel deployment config (frontend + backend services, `/api/*` and `/health` routing)
 - `render.yaml` + `backend/Dockerfile` — legacy hosting artifacts, unused by the Vercel deployment
@@ -247,10 +328,12 @@ Dev: pytest, pytest-cov, ruff
 
 ### Known Issues / Limitations
 1. No `package-lock.json` — `npm ci` fails in CI (fixed to `npm install`)
-2. `ruff check` has `|| true` in CI (doesn't fail build yet)
+2. ~~`ruff check` has `|| true` in CI~~ — resolved: ruff is a blocking CI gate
 3. `datetime.utcnow()` deprecation warnings fixed in Sprint #11 work
-4. Frontend `npm run lint` not configured (no ESLint config)
+4. ~~Frontend `npm run lint` not configured~~ — resolved: ESLint flat config + CI gate (Sep 14)
 5. `INVOICE_LEVEL_FIELDS` constant defined but was previously unused in correction application logic (now utilized)
+6. Digest window boundaries and `generated_at` were UTC on the server — resolved: IST clock (Sep 14)
+7. No rate limiting on AI-costly endpoints — resolved: per-account sliding-window limits (Sep 14)
 
 ---
 
