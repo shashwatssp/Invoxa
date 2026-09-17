@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthContext';
+import { BrandMark } from '@/components/BrandMark';
 
 type Feature = (typeof FEATURES)[number];
 
@@ -92,7 +93,9 @@ export function Landing() {
     <div className="landing">
       <header className="landing__nav">
         <span className="app-nav__brand landing__brand">
-          <span className="app-nav__brand-mark" aria-hidden>i</span>
+          <span className="app-nav__brand-mark" aria-hidden>
+            <BrandMark />
+          </span>
           Invoxa
         </span>
         <nav className="landing__nav-actions" aria-busy={status === 'loading'}>

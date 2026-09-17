@@ -2,6 +2,7 @@ import { NavLink, Route, Routes, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { Account } from '@/components/Account';
 import { Ask } from '@/components/Ask';
+import { BrandMark } from '@/components/BrandMark';
 import { Dashboard } from '@/components/Dashboard';
 import { HealthGate } from '@/components/HealthGate';
 import { InvoiceDetail } from '@/components/InvoiceDetail';
@@ -96,7 +97,9 @@ function AppShell() {
     <div className="app-shell">
       <nav className="app-nav">
         <NavLink to="/app" className="app-nav__brand">
-          <span className="app-nav__brand-mark" aria-hidden>i</span>
+          <span className="app-nav__brand-mark" aria-hidden>
+            <BrandMark />
+          </span>
           Invoxa
         </NavLink>
         <div className="app-nav__links">

@@ -128,8 +128,13 @@ button, input, select, textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.85rem;
-  font-weight: 800;
+}
+
+/* The spark-dot "i" SVG (BrandMark) inside the gradient tile. */
+.app-nav__brand-mark svg {
+  width: 1.08rem;
+  height: 1.08rem;
+  display: block;
 }
 
 .app-nav__links {

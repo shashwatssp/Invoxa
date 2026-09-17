@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthContext';
 import { friendlyError } from '@/lib/api';
+import { BrandMark } from '@/components/BrandMark';
 
 export function Signup() {
   const { signup } = useAuth();
@@ -40,7 +41,9 @@ export function Signup() {
   return (
     <div className="auth-page">
       <Link to="/" className="app-nav__brand auth-brand">
-        <span className="app-nav__brand-mark" aria-hidden>i</span>
+        <span className="app-nav__brand-mark" aria-hidden>
+          <BrandMark />
+        </span>
         Invoxa
       </Link>
       <form className="card auth-card" onSubmit={handleSubmit} noValidate>
