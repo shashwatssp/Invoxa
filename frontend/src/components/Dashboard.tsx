@@ -10,6 +10,7 @@ import {
   friendlyError,
   moveInvoicesToFolder,
   type CategorySpendRow,
+  type DigestResponse,
   type DueSoonItem,
   type FolderInfo,
   type InvoiceSummary,
@@ -20,19 +21,6 @@ import { ExportDialog } from '@/components/ExportDialog';
 
 /** Chip filter values: all, unfiled, or one folder id. */
 type FolderScope = 'all' | 'none' | string;
-
-interface DigestPayload {
-  window_days?: number;
-  generated_at?: string;
-  invoices_processed?: number;
-  auto_approved?: number;
-  flagged_for_review?: number;
-  total_amount?: number;
-  summary_lines?: string[];
-  narrative?: string | null;
-  narrative_source?: string;
-  [k: string]: unknown;
-}
 
 /** Client-side render cap for the invoice list; "Show more" adds another page. */
 const PAGE_SIZE = 100;
@@ -63,7 +51,7 @@ function Stat({ label, value, tone }: { label: string; value: string | number; t
 export function Dashboard() {
   const [invoices, setInvoices] = useState<InvoiceSummary[]>([]);
   const [folders, setFolders] = useState<FolderInfo[]>([]);
-  const [digest, setDigest] = useState<DigestPayload | null>(null);
+  const [digest, setDigest] = useState<DigestResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -119,7 +107,7 @@ export function Dashboard() {
       ]);
       setInvoices(invoiceList);
       setFolders(folderList);
-      setDigest(digestPayload as DigestPayload);
+      setDigest(digestPayload);
       setDueSoon(dueSoonList);
       setTrend(trendList);
       setCategorySpend(categoryList);

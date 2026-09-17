@@ -90,11 +90,6 @@ export function Ask() {
         <section className="card" style={{ marginTop: '1rem' }}>
           <div className="card__header">
             <h2>Answer</h2>
-            {result.model_calls > 0 && (
-              <span className="muted" style={{ fontSize: '0.8rem' }}>
-                {result.model_calls} AI call{result.model_calls === 1 ? '' : 's'}
-              </span>
-            )}
           </div>
           <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{result.answer}</p>
           {result.tool_calls.length > 0 && (

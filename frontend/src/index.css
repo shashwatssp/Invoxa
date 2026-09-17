@@ -201,6 +201,10 @@ button, input, select, textarea {
     display: flex;
     height: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
+    /* Inset the row itself on curved-edge screens so edge icons keep
+       their labels; safe-area-aware for notched phones. */
+    padding-left: max(0.85rem, env(safe-area-inset-left));
+    padding-right: max(0.85rem, env(safe-area-inset-right));
     background: color-mix(in srgb, var(--color-card) 92%, transparent);
     backdrop-filter: blur(10px);
     border-top: 1px solid var(--color-border);

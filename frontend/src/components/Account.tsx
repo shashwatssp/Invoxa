@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthContext';
 import { applyThemePreference, getThemePreference, type ThemePreference } from '@/lib/theme';
-import { exportAccountData, friendlyError, sendDigestEmail } from '@/lib/api';
+import { exportAccountData, fetchDigest, friendlyError } from '@/lib/api';
 
 /** Profile + session: the one place that always offers Sign out,
  * including on phones where the top nav is hidden. */
@@ -12,8 +12,7 @@ export function Account() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [digestEmail, setDigestEmail] = useState('');
-  const [sendingDigest, setSendingDigest] = useState(false);
-  const [digestNotice, setDigestNotice] = useState<string | null>(null);
+  const [preparingDigest, setPreparingDigest] = useState(false);
   const [digestError, setDigestError] = useState<string | null>(null);
 
   /** Download the whole account (profile, invoices, folders, review queue) as JSON. */
@@ -29,23 +28,23 @@ export function Account() {
     }
   };
 
-  const handleSendDigest = async () => {
+  /** Open the user's email app (Gmail, etc.) with the digest prefilled —
+   * sending stays manual, and no SMTP config exists anywhere. */
+  const handleOpenDigest = async () => {
     const recipient = digestEmail.trim();
-    if (!recipient || sendingDigest) return;
-    setSendingDigest(true);
-    setDigestNotice(null);
+    if (!recipient || preparingDigest) return;
+    setPreparingDigest(true);
     setDigestError(null);
     try {
-      const outcome = await sendDigestEmail(recipient);
-      if (outcome.sent) {
-        setDigestNotice(`Digest sent to ${recipient}. Check the inbox in a minute.`);
-      } else {
-        setDigestError(outcome.reason ?? 'The digest could not be sent.');
-      }
+      const digest = await fetchDigest(7);
+      const body = digest.summary_lines.join('\n') +
+        (digest.narrative ? `\n\n${digest.narrative}` : '');
+      const subject = `Invoxa digest — the last ${digest.window_days} days`;
+      window.location.href = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     } catch (err) {
-      setDigestError(friendlyError(err, 'The digest could not be sent.'));
+      setDigestError(friendlyError(err, 'Could not prepare the digest. Please try again.'));
     } finally {
-      setSendingDigest(false);
+      setPreparingDigest(false);
     }
   };
 
@@ -89,8 +88,9 @@ export function Account() {
           <h2>Weekly digest email</h2>
         </div>
         <p className="muted" style={{ margin: '0 0 1rem', fontSize: '0.9rem' }}>
-          Email yourself the plain-English weekly summary: what was processed,
-          what needs review, and what is due soon.
+          Put in an email address and your email app opens with the
+          plain-English weekly summary already written — what was processed,
+          what needs review, and what is due soon. You press send. No setup.
         </p>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <input
@@ -104,15 +104,12 @@ export function Account() {
           <button
             type="button"
             className="button button--secondary"
-            onClick={() => void handleSendDigest()}
-            disabled={sendingDigest || !digestEmail.trim()}
+            onClick={() => void handleOpenDigest()}
+            disabled={preparingDigest || !digestEmail.trim()}
           >
-            {sendingDigest ? 'Sending…' : 'Send the digest'}
+            {preparingDigest ? 'Preparing…' : 'Open email app'}
           </button>
         </div>
-        {digestNotice && (
-          <p className="muted" style={{ margin: '0.75rem 0 0', fontSize: '0.85rem' }}>{digestNotice}</p>
-        )}
         {digestError && <div className="error-banner" style={{ marginTop: '0.75rem' }}>{digestError}</div>}
       </section>
 

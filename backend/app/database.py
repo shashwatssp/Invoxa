@@ -398,6 +398,33 @@ def vendor_spend_summary(user_id: str) -> list[dict]:
     return ranked
 
 
+def payables_by_vendor(user_id: str) -> list[dict]:
+    """Per-vendor totals of UNPAID invoices (money still owed), biggest first.
+
+    Deterministic answer to "what do I owe, to whom" — overdue counts
+    use each invoice's parsed due date against today.
+    """
+    today = dt.date.today()
+    vendors: dict[str, dict] = {}
+    for row in get_invoices(user_id):
+        if (row.get("status") or "pending") not in UNPAID_STATUSES:
+            continue
+        name = row.get("vendor_name") or row.get("vendor_id") or "(unknown)"
+        entry = vendors.setdefault(
+            name, {"vendor": name, "unpaid_total": 0.0, "invoice_count": 0, "overdue_count": 0}
+        )
+        with contextlib.suppress(TypeError, ValueError):
+            entry["unpaid_total"] += float(row.get("amount") or 0)
+        entry["invoice_count"] += 1
+        due_date = _parse_due_date(row.get("due_date"))
+        if due_date and due_date < today:
+            entry["overdue_count"] += 1
+    ranked = sorted(vendors.values(), key=lambda item: item["unpaid_total"], reverse=True)
+    for entry in ranked:
+        entry["unpaid_total"] = round(entry["unpaid_total"], 2)
+    return ranked
+
+
 def category_spend(user_id: str) -> list[dict]:
     """Total spend per expense category, biggest first (nulls grouped as 'other')."""
     totals: dict[str, float] = {}

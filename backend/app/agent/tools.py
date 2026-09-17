@@ -23,6 +23,7 @@ from app.database import (
     get_due_soon_rows,
     get_invoices,
     monthly_spend,
+    payables_by_vendor,
     vendor_spend_summary,
 )
 
@@ -88,6 +89,13 @@ def tool_due_soon(user_id: str, args: dict) -> dict:
 def tool_vendor_spend(user_id: str, args: dict) -> dict:
     """Per-vendor spend totals, biggest first."""
     return {"vendors": vendor_spend_summary(user_id)[:_MAX_ROWS]}
+
+
+def tool_payables_by_vendor(user_id: str, args: dict) -> dict:
+    """What the business still owes, grouped per vendor (deterministic)."""
+    vendors = payables_by_vendor(user_id)
+    total = round(sum(entry["unpaid_total"] for entry in vendors), 2)
+    return {"total_unpaid_inr": total, "vendors": vendors[:_MAX_ROWS]}
 
 
 def tool_category_spend(user_id: str, args: dict) -> dict:
@@ -182,6 +190,15 @@ FUNCTION_DECLARATIONS = [
         "parameters": {"type": "object", "properties": {}},
     },
     {
+        "name": "payables_by_vendor",
+        "description": (
+            "Total UNPAID amount per vendor — money the business still owes — "
+            "biggest first, with invoice and overdue counts. Use for 'what do "
+            "I owe', 'who do I have to pay', 'outstanding payables'."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
         "name": "category_spend",
         "description": "Total spend per expense category, biggest first.",
         "parameters": {"type": "object", "properties": {}},
@@ -236,6 +253,7 @@ _EXECUTORS: dict[str, Callable[[str, dict], dict]] = {
     "account_overview": tool_account_overview,
     "due_soon": tool_due_soon,
     "vendor_spend": tool_vendor_spend,
+    "payables_by_vendor": tool_payables_by_vendor,
     "category_spend": tool_category_spend,
     "monthly_spend": tool_monthly_spend,
     "flagged_invoices": tool_flagged_invoices,

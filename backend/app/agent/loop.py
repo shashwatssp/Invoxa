@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 
 import httpx
 
@@ -30,8 +31,10 @@ logger = logging.getLogger(__name__)
 GEMINI_API_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 )
-_TIMEOUT_SECONDS = 45
+_TIMEOUT_SECONDS = 25  # two sequential calls + retry must fit Vercel's 60s cap
 _MAX_OUTPUT_TOKENS = 1024
+_RETRY_BACKOFF_SECONDS = 2.5
+_RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}
 
 
 def _env_int(name: str, default: int) -> int:
@@ -54,29 +57,49 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _model_call(contents: list[dict]) -> dict | None:
-    """One generateContent call; None on any failure."""
-    try:
-        with httpx.Client(timeout=_TIMEOUT_SECONDS) as client:
-            response = client.post(
-                GEMINI_API_URL,
-                params={"key": GEMINI_API_KEY},
-                json={
-                    "contents": contents,
-                    "tools": [{"function_declarations": tools.FUNCTION_DECLARATIONS}],
-                    "generationConfig": {
-                        "temperature": 0.2,
-                        "maxOutputTokens": _MAX_OUTPUT_TOKENS,
-                        # Short tool-driven answers need no thinking budget.
-                        "thinkingConfig": {"thinkingBudget": 0},
+def _model_call(contents: list[dict]) -> tuple[dict | None, str | None]:
+    """One generateContent call with a single retry on transient failures.
+
+    The Gemini free tier is rate-limited per minute, and the model is
+    called 2-3 times per question, so a 429/5xx/timeout is retried once
+    after a short backoff. Returns ``(data, None)`` on success or
+    ``(None, reason)`` on failure — never raises.
+    """
+    reason: str | None = None
+    for attempt in range(2):
+        try:
+            with httpx.Client(timeout=_TIMEOUT_SECONDS) as client:
+                response = client.post(
+                    GEMINI_API_URL,
+                    params={"key": GEMINI_API_KEY},
+                    json={
+                        "contents": contents,
+                        "tools": [{"function_declarations": tools.FUNCTION_DECLARATIONS}],
+                        "generationConfig": {
+                            "temperature": 0.2,
+                            "maxOutputTokens": _MAX_OUTPUT_TOKENS,
+                            # Short tool-driven answers need no thinking budget.
+                            "thinkingConfig": {"thinkingBudget": 0},
+                        },
                     },
-                },
-            )
-            response.raise_for_status()
-            return response.json()
-    except Exception:
-        logger.warning("Agent model call failed", exc_info=True)
-        return None
+                )
+                response.raise_for_status()
+                return response.json(), None
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status == 429:
+                reason = "rate_limited"
+            elif status in _RETRYABLE_STATUS:
+                reason = "server_error"
+            else:
+                logger.warning("Agent model call failed: HTTP %d", status)
+                return None, reason or "unreachable"
+        except Exception:
+            reason = "unreachable"
+        if attempt == 0:
+            time.sleep(_RETRY_BACKOFF_SECONDS)
+    logger.warning("Agent model call failed (%s) after retry", reason)
+    return None, reason
 
 
 def _candidate_content(data: dict) -> dict | None:
@@ -134,19 +157,22 @@ def ask_invoxa(user_id: str, question: str) -> dict:
     ]
     tool_calls_log: list[dict] = []
     model_calls = 0
+    last_error: str | None = None
 
     for _round in range(MAX_TOOL_ROUNDS):
         if model_calls >= min(MAX_MODEL_CALLS, remaining):
             break
-        data = _model_call(contents)
+        data, last_error = _model_call(contents)
         model_calls += 1
         budget.record_model_calls(1, user_id, "ask")
         if data is None:
-            return {
-                "answer": "I could not reach the AI service just now. Please try again shortly.",
-                "tool_calls": tool_calls_log,
-                "model_calls": model_calls,
-            }
+            answer = (
+                "The AI is busy right now — the free tier is rate-limited per minute. "
+                "Please try again in a minute."
+                if last_error == "rate_limited"
+                else "I could not reach the AI service just now. Please try again shortly."
+            )
+            return {"answer": answer, "tool_calls": tool_calls_log, "model_calls": model_calls}
         content = _candidate_content(data)
         if content is None:
             break

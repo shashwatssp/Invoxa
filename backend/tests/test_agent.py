@@ -11,6 +11,7 @@ Every Gemini interaction is faked (offline, deterministic). Covers:
 
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 from app.agent import budget as agent_budget
 from app.agent import loop as agent_loop
@@ -22,16 +23,35 @@ from fastapi.testclient import TestClient
 client = TestClient(app)
 
 
+class _ScriptedError:
+    """Scripted HTTP failure: raise_for_status raises for this status."""
+
+    def __init__(self, status: int) -> None:
+        self.status = status
+
+
 def _scripted_client(monkeypatch, responses):
-    """Patch loop.httpx so each POST returns the next scripted response."""
+    """Patch loop.httpx so each POST returns the next scripted response.
+
+    Script entries are JSON dicts, or ``_ScriptedError(status)`` to fail
+    one HTTP attempt (which is what the loop's retry logic reacts to).
+    """
     script = list(responses)
 
     class _FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
         def raise_for_status(self):
-            pass
+            if isinstance(self.payload, _ScriptedError):
+                response = httpx.Response(
+                    self.payload.status,
+                    request=httpx.Request("POST", "https://generativelanguage.test"),
+                )
+                response.raise_for_status()  # raises httpx.HTTPStatusError
 
         def json(self):
-            return script.pop(0)
+            return self.payload
 
     class _FakeClient:
         def __init__(self, **kwargs):
@@ -46,7 +66,7 @@ def _scripted_client(monkeypatch, responses):
         def post(self, url, **kwargs):
             assert script, "Test script ran dry — loop made more calls than scripted"
             self.captured.append(kwargs.get("json"))
-            return _FakeResponse()
+            return _FakeResponse(script.pop(0))
 
     import app.agent.loop as loop_mod
 
@@ -122,6 +142,24 @@ class TestToolDispatch:
         monkeypatch.setattr(agent_tools, "vendor_spend_summary", _boom)
         result = agent_tools.execute_tool("vendor_spend", {}, "user-1")
         assert "error" in result
+
+    def test_payables_by_vendor_sums_and_ranks(self, monkeypatch):
+        monkeypatch.setattr(
+            agent_tools,
+            "payables_by_vendor",
+            lambda user_id: [
+                {"vendor": "Courier Co", "unpaid_total": 1200.5, "invoice_count": 2, "overdue_count": 1},
+                {"vendor": "Small Traders", "unpaid_total": 99.0, "invoice_count": 1, "overdue_count": 0},
+            ],
+        )
+        result = agent_tools.execute_tool("payables_by_vendor", {}, "user-1")
+        assert result["output"]["total_unpaid_inr"] == 1299.5
+        assert result["output"]["vendors"][0]["vendor"] == "Courier Co"
+
+    def test_payables_is_whitelisted(self):
+        names = {declaration["name"] for declaration in agent_tools.FUNCTION_DECLARATIONS}
+        assert "payables_by_vendor" in names
+        assert "payables_by_vendor" in agent_tools._EXECUTORS
 
     def test_gst_summary_splits_taxable_and_tax(self, monkeypatch):
         this_month = datetime.now(UTC).strftime("%Y-%m")
@@ -224,7 +262,53 @@ class TestAskLoop:
         assert "not configured" in result["answer"]
         assert result["model_calls"] == 0
 
+    def test_429_is_retried_and_recovers(self, monkeypatch):
+        """One transient 429 is retried in-place; the question still answers."""
+        monkeypatch.setattr(agent_loop, "_RETRY_BACKOFF_SECONDS", 0)
+        monkeypatch.setattr(agent_loop, "GEMINI_API_KEY", "test-key")
+        monkeypatch.setattr(agent_loop.budget, "remaining_today", lambda: 50)
+        monkeypatch.setattr(agent_loop.budget, "record_model_calls", lambda *a, **k: None)
+        _scripted_client(
+            monkeypatch,
+            [
+                _ScriptedError(429),
+                {"candidates": [{"content": _text_content("Recovered after retry.")}]},
+            ],
+        )
+        result = agent_loop.ask_invoxa("user-1", "anything")
+        assert result["answer"] == "Recovered after retry."
+        assert result["model_calls"] == 1
+
+    def test_persistent_429_gets_clear_message(self, monkeypatch):
+        """A 429 on both attempts surfaces the rate-limit copy, not a crash."""
+        monkeypatch.setattr(agent_loop, "_RETRY_BACKOFF_SECONDS", 0)
+        monkeypatch.setattr(agent_loop, "GEMINI_API_KEY", "test-key")
+        monkeypatch.setattr(agent_loop.budget, "remaining_today", lambda: 50)
+        monkeypatch.setattr(agent_loop.budget, "record_model_calls", lambda *a, **k: None)
+        _scripted_client(monkeypatch, [_ScriptedError(429), _ScriptedError(429)])
+        result = agent_loop.ask_invoxa("user-1", "anything")
+        assert "busy" in result["answer"]
+        assert "rate-limited" in result["answer"]
+        assert result["model_calls"] == 1
+
+    def test_server_error_is_retried_too(self, monkeypatch):
+        """5xx responses share the retry path and recover the same way."""
+        monkeypatch.setattr(agent_loop, "_RETRY_BACKOFF_SECONDS", 0)
+        monkeypatch.setattr(agent_loop, "GEMINI_API_KEY", "test-key")
+        monkeypatch.setattr(agent_loop.budget, "remaining_today", lambda: 50)
+        monkeypatch.setattr(agent_loop.budget, "record_model_calls", lambda *a, **k: None)
+        _scripted_client(
+            monkeypatch,
+            [
+                _ScriptedError(503),
+                {"candidates": [{"content": _text_content("Back online.")}]},
+            ],
+        )
+        result = agent_loop.ask_invoxa("user-1", "anything")
+        assert result["answer"] == "Back online."
+
     def test_network_failure_degrades_gracefully(self, monkeypatch):
+        monkeypatch.setattr(agent_loop, "_RETRY_BACKOFF_SECONDS", 0)
         monkeypatch.setattr(agent_loop, "GEMINI_API_KEY", "test-key")
         monkeypatch.setattr(agent_loop.budget, "remaining_today", lambda: 50)
         monkeypatch.setattr(agent_loop.budget, "record_model_calls", lambda *a, **k: None)
@@ -247,6 +331,26 @@ class TestAskLoop:
         monkeypatch.setattr(loop_mod.httpx, "Client", lambda **kw: _BoomClient())
         result = agent_loop.ask_invoxa("user-1", "anything")
         assert "could not reach" in result["answer"]
+
+    def test_payables_aggregation_in_database(self, monkeypatch):
+        """The database helper: unpaid only, grouped, overdue counted."""
+        import app.database as db
+
+        monkeypatch.setattr(
+            db,
+            "get_invoices",
+            lambda user_id: [
+                {"vendor_name": "Courier Co", "amount": 500.0, "status": "pending", "due_date": "2020-01-01"},
+                {"vendor_name": "Courier Co", "amount": 250.0, "status": "flagged", "due_date": None},
+                {"vendor_name": "Paid Ltd", "amount": 999.0, "status": "reviewed", "due_date": "2020-01-01"},
+                {"vendor_name": "Exporter", "amount": 100.0, "status": "auto_approved", "due_date": "2099-01-01"},
+            ],
+        )
+        rows = db.payables_by_vendor("user-1")
+        assert rows == [
+            {"vendor": "Courier Co", "unpaid_total": 750.0, "invoice_count": 2, "overdue_count": 1},
+            {"vendor": "Exporter", "unpaid_total": 100.0, "invoice_count": 1, "overdue_count": 0},
+        ]
 
     def test_remaining_budget_limits_model_calls(self, monkeypatch):
         """When only 2 calls of budget remain, the loop spends at most 2."""

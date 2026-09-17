@@ -472,8 +472,24 @@ export async function submitCorrections(
   await api.post(`/api/review/${reviewId}/correct`, { corrections });
 }
 
-export async function fetchDigest(days: number): Promise<Record<string, unknown>> {
-  const { data } = await api.get('/api/digest', { params: { days } });
+export interface DigestResponse {
+  window_days: number;
+  generated_at: string;
+  invoices_processed: number;
+  auto_approved: number;
+  flagged_for_review: number;
+  exported: number;
+  total_amount: number;
+  top_vendors: { vendor: string; total_amount: number }[];
+  due_soon_days: number;
+  due_soon: Record<string, unknown>[];
+  summary_lines: string[];
+  narrative: string | null;
+  narrative_source: string;
+}
+
+export async function fetchDigest(days: number): Promise<DigestResponse> {
+  const { data } = await api.get<DigestResponse>('/api/digest', { params: { days } });
   return data;
 }
 
@@ -515,18 +531,6 @@ export interface ChaseResponse {
 /** Draft (never send) WhatsApp payment reminders for due/overdue invoices. */
 export async function draftPaymentChase(): Promise<ChaseResponse> {
   const { data } = await api.post<ChaseResponse>('/api/agent/payment-chase');
-  return data;
-}
-
-/** Email the account's weekly digest via server-side SMTP. */
-export async function sendDigestEmail(
-  toEmail: string,
-  days = 7,
-): Promise<{ sent: boolean; reason?: string }> {
-  const { data } = await api.post<{ sent: boolean; reason?: string }>('/api/digest/email', {
-    to_email: toEmail,
-    days,
-  });
   return data;
 }
 

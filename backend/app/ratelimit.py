@@ -23,7 +23,7 @@ from fastapi import HTTPException
 logger = logging.getLogger(__name__)
 
 _WINDOW_SECONDS = 3600
-_DEFAULT_LIMITS = {"email": 10}  # per hour; everything else defaults to 60
+_DEFAULT_LIMITS: dict[str, int] = {}  # per hour; everything defaults to 60
 _buckets: dict[tuple[str, str], deque[float]] = {}
 _lock = threading.Lock()
 
